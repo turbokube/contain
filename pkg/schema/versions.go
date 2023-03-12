@@ -38,7 +38,7 @@ func parseConfig(buf []byte) (v1.ContainConfig, error) {
 	decoder := yaml.NewDecoder(b)
 	decoder.KnownFields(true)
 	var config v1.ContainConfig
-	decoder.Decode(config)
+	decoder.Decode(&config)
 	return config, nil
 }
 

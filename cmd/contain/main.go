@@ -44,7 +44,15 @@ func main() {
 		zap.L().Fatal("Can't start without config", zap.Error(err))
 	}
 
-	layerBuilders := make([]layers.LayerBuilder, 0, len(config.Layers))
+	if config.Tag == "" {
+		image, exists := os.LookupEnv("IMAGE")
+		if exists {
+			zap.L().Debug("Using tag from IMAGE env")
+		}
+		config.Tag = image
+	}
+
+	layerBuilders := make([]layers.LayerBuilder, len(config.Layers))
 	for i, layerCfg := range config.Layers {
 		b, err := layers.NewLayerBuilder(layerCfg)
 		if err != nil {
@@ -61,7 +69,7 @@ func main() {
 		zap.L().Fatal("intialization", zap.Error(err))
 	}
 
-	layers := make([]v1.Layer, 0, len(layerBuilders))
+	layers := make([]v1.Layer, len(layerBuilders))
 	for i, builder := range layerBuilders {
 		layer, err := builder()
 		if err != nil {

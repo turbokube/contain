@@ -1,6 +1,7 @@
-base: docker.io/busybox
+base: docker.io/library/busybox
 layers:
 - localDir:
     path: .
     containerPath: /app
-# Not needed because we have skaffold's $IMAGE: tag:
+# Should not needed because we have skaffold's $IMAGE tag
+#tag: localhost:22500/library/localdir1

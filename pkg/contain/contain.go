@@ -40,11 +40,13 @@ func NewContain(config *schema.ContainConfig) (*Contain, error) {
 		if err != nil {
 			zap.L().Error("Failed to parse base", zap.String("ref", config.Base), zap.Error(err))
 		}
+		zap.L().Debug("base image", zap.String("ref", c.baseRef.String()))
 	}
-	c.tagRef, err = name.ParseReference(config.Base)
+	c.tagRef, err = name.ParseReference(config.Tag)
 	if err != nil {
 		zap.L().Error("Failed to parse result image ref", zap.String("ref", config.Tag), zap.Error(err))
 	}
+	zap.L().Debug("target image", zap.String("ref", c.tagRef.String()))
 	// https://github.com/google/go-containerregistry/blob/v0.13.0/pkg/crane/options.go#L43
 	c.craneOptions = crane.Options{
 		Remote: []remote.Option{
@@ -152,7 +154,7 @@ func (c *Contain) Append(layers ...v1.Layer) (v1.Hash, error) {
 		zap.L().Error("Failed to push", zap.Error(err))
 		return noresult, err
 	}
-	zap.L().Info("Pushed",
+	zap.L().Info("pushed",
 		zap.String("digest", imgDigest.String()),
 	)
 	return imgDigest, nil
