@@ -1,4 +1,4 @@
-package layer
+package localdir
 
 import (
 	"fmt"
@@ -15,10 +15,10 @@ import (
 
 type PathMapper func(string) string
 
-type InputLocal struct {
-	LocalDir        string
-	ToContainerPath PathMapper
-	Ignore          *patternmatcher.PatternMatcher
+type Dir struct {
+	Path          string
+	ContainerPath PathMapper
+	Ignore        *patternmatcher.PatternMatcher
 }
 
 func NewPathMapperPrepend(prependDir string) PathMapper {
@@ -39,23 +39,23 @@ func NewPathMapperAsIs() PathMapper {
 	}
 }
 
-func FromFilesystem(input InputLocal) (v1.Layer, error) {
+func FromFilesystem(dir Dir) (v1.Layer, error) {
 
-	if input.LocalDir == "" {
+	if dir.Path == "" {
 		return nil, fmt.Errorf("localDir must be specified (use . for CWD)")
 	}
 
-	if input.ToContainerPath == nil {
-		input.ToContainerPath = NewPathMapperAsIs()
+	if dir.ContainerPath == nil {
+		dir.ContainerPath = NewPathMapperAsIs()
 	}
 
-	if input.Ignore == nil {
-		input.Ignore, _ = patternmatcher.New([]string{})
+	if dir.Ignore == nil {
+		dir.Ignore, _ = patternmatcher.New([]string{})
 	}
 
 	filemap := make(map[string][]byte)
 
-	fileSystem := os.DirFS(input.LocalDir)
+	fileSystem := os.DirFS(dir.Path)
 
 	fs.WalkDir(fileSystem, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -64,7 +64,7 @@ func FromFilesystem(input InputLocal) (v1.Layer, error) {
 		if d.Type().IsDir() {
 			return nil
 		}
-		ignore, err := input.Ignore.MatchesOrParentMatches(path)
+		ignore, err := dir.Ignore.MatchesOrParentMatches(path)
 		if err != nil {
 			return err
 		}
@@ -76,7 +76,7 @@ func FromFilesystem(input InputLocal) (v1.Layer, error) {
 		if err != nil {
 			return err
 		}
-		topath := input.ToContainerPath(path)
+		topath := dir.ContainerPath(path)
 		filemap[topath] = file
 		zap.L().Debug("added",
 			zap.String("from", path),

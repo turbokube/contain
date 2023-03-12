@@ -1,0 +1,8 @@
+apiVersion: skaffold/v3
+kind: Config
+build:
+  artifacts:
+  - image: localdir1
+    context: ./test/localdir1
+    custom:
+      buildCommand: ../../dist/contain-test

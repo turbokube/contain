@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 // ReadAll reads a .dockerignore file and returns the list of file patterns
@@ -59,7 +59,9 @@ func ReadAll(reader io.Reader) ([]string, error) {
 		excludes = append(excludes, pattern)
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, errors.Wrap(err, "error reading .dockerignore")
+		// return nil, errors.Wrap(err, "error reading .dockerignore")
+		zap.L().Error("error reading .dockerignore", zap.Error(err))
+		return nil, err
 	}
 	return excludes, nil
 }

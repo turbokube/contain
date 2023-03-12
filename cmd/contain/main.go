@@ -4,6 +4,10 @@ import (
 	"flag"
 	"os"
 
+	"github.com/c9h-to/contain/pkg/contain"
+	"github.com/c9h-to/contain/pkg/layers"
+	"github.com/c9h-to/contain/pkg/schema"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -13,7 +17,11 @@ var (
 )
 
 func init() {
-	flag.StringVar(&base, "b", "", "base image")
+	flag.StringVar(&base,
+		"b",
+		"",
+		"base image (implies tag = $IMAGE, local dir = $PWD, container path = /app)",
+	)
 	flag.Parse()
 }
 
@@ -29,5 +37,38 @@ func main() {
 	undo := zap.ReplaceGlobals(logger)
 	defer undo()
 
-	zap.L().Info("TODO")
+	// TODO when tag is omitted read from $IMAGE env
+
+	config, err := schema.ParseConfig("contain.yaml")
+	if err != nil {
+		zap.L().Fatal("Can't start without config", zap.Error(err))
+	}
+
+	layerBuilders := make([]layers.LayerBuilder, 0, len(config.Layers))
+	for i, layerCfg := range config.Layers {
+		b, err := layers.NewLayerBuilder(layerCfg)
+		if err != nil {
+			zap.L().Fatal("Failed to get layer builder",
+				zap.Any("config", layerCfg),
+				zap.Error(err),
+			)
+		}
+		layerBuilders[i] = b
+	}
+
+	c, err := contain.NewContain(&config)
+	if err != nil {
+		zap.L().Fatal("intialization", zap.Error(err))
+	}
+
+	layers := make([]v1.Layer, 0, len(layerBuilders))
+	for i, builder := range layerBuilders {
+		layer, err := builder()
+		if err != nil {
+			zap.L().Fatal("layer builder invocation failed", zap.Error(err))
+		}
+		layers[i] = layer
+	}
+
+	c.Append(layers...)
 }

@@ -1,0 +1,6 @@
+base: docker.io/busybox
+layers:
+- localDir:
+    path: .
+    containerPath: /app
+# Not needed because we have skaffold's $IMAGE: tag:
