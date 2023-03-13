@@ -2,6 +2,9 @@ base: docker.io/library/busybox
 layers:
 - localDir:
     path: .
-    containerPath: /app
+    containerPath: /opt/localdir1
+    ignore:
+    - contain.yaml
+    - test.yaml
 # Should not needed because we have skaffold's $IMAGE tag
 #tag: localhost:22500/library/localdir1

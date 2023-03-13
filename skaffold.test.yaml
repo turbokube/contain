@@ -6,3 +6,14 @@ build:
     context: ./test/localdir1
     custom:
       buildCommand: ../../dist/contain-test
+  - image: localdir-app
+    context: ./test/localdir-app
+    custom:
+      buildCommand: ../../dist/contain-test -b docker.io/library/busybox
+test:
+- image: localdir1
+  structureTests:
+  - ./test/localdir1/test.yaml
+- image: localdir-app
+  structureTests:
+  - ./test/localdir-app-test.yaml

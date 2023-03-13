@@ -2,11 +2,12 @@ package layers
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/c9h-to/contain/pkg/localdir"
 	schema "github.com/c9h-to/contain/pkg/schema/v1"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"go.uber.org/zap"
+	"github.com/moby/patternmatcher"
 )
 
 type LayerBuilder func() (v1.Layer, error)
@@ -21,12 +22,20 @@ func NewLayerBuilder(cfg schema.Layer) (LayerBuilder, error) {
 }
 
 func newLayerBuilderLocalDir(cfg schema.LocalDir) (LayerBuilder, error) {
-	if len(cfg.Ignore) > 0 {
-		zap.L().Fatal("Localdir ignore patterns not supported yet")
-	}
 	dir := localdir.Dir{
-		Path:          cfg.Path,
-		ContainerPath: localdir.NewPathMapperPrepend(cfg.ContainerPath),
+		Path: cfg.Path,
+	}
+	if cfg.ContainerPath != "" {
+		dir.ContainerPath = localdir.NewPathMapperPrepend(cfg.ContainerPath)
+	} else {
+		dir.ContainerPath = localdir.NewPathMapperAsIs()
+	}
+	if len(cfg.Ignore) > 0 {
+		var err error
+		dir.Ignore, err = patternmatcher.New(cfg.Ignore)
+		if err != nil {
+			return nil, fmt.Errorf("patternatcher from: %v", cfg.Ignore)
+		}
 	}
 	return func() (v1.Layer, error) {
 		return localdir.FromFilesystem(dir)

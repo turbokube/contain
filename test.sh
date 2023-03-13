@@ -12,6 +12,16 @@ $DOCKER inspect $REGISTRY_NAME 2>/dev/null >/dev/null ||
 mkdir -p dist
 go build -o dist/contain-test cmd/contain/main.go
 
-skaffold --default-repo=localhost:22500 -f skaffold.test.yaml build
+skaffold --default-repo=localhost:22500 -f skaffold.test.yaml build --file-output=dist/test.artifacts
 
-$DOCKER stop $REGISTRY_NAME
+skaffold -f skaffold.test.yaml test -a dist/test.artifacts
+
+for F in $(find test -name skaffold.fail-\*.yaml); do
+  echo "=> Fail test: $F ..."
+  RESULT=0
+  skaffold --default-repo=localhost:22500 -f $F build > $F.out 2>&1 || RESULT=$?
+  [ $RESULT -eq 0 ] && echo "Expected build failure with $F, got exit $RESULT after:" && cat $F.out && exit 1
+  echo "ok"
+done
+
+# $DOCKER stop $REGISTRY_NAME

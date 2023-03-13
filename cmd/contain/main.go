@@ -7,6 +7,7 @@ import (
 	"github.com/c9h-to/contain/pkg/contain"
 	"github.com/c9h-to/contain/pkg/layers"
 	"github.com/c9h-to/contain/pkg/schema"
+	schemav1 "github.com/c9h-to/contain/pkg/schema/v1"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -37,11 +38,17 @@ func main() {
 	undo := zap.ReplaceGlobals(logger)
 	defer undo()
 
-	// TODO when tag is omitted read from $IMAGE env
-
-	config, err := schema.ParseConfig("contain.yaml")
-	if err != nil {
-		zap.L().Fatal("Can't start without config", zap.Error(err))
+	var err error
+	var config schemav1.ContainConfig
+	if base != "" {
+		zap.L().Info("got base arg", zap.String("base", base))
+		// TODO last arg should be CWD, defaults to PWD
+		config = schema.TemplateApp(base)
+	} else {
+		config, err = schema.ParseConfig("contain.yaml")
+		if err != nil {
+			zap.L().Fatal("Can't start without config", zap.Error(err))
+		}
 	}
 
 	if config.Tag == "" {

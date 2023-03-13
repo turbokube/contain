@@ -87,6 +87,10 @@ func FromFilesystem(dir Dir) (v1.Layer, error) {
 		return nil
 	})
 
+	if len(filemap) == 0 {
+		return nil, fmt.Errorf("dir resulted in empty layer: %v", dir)
+	}
+
 	return crane.Layer(filemap)
 
 }
