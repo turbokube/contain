@@ -26,3 +26,6 @@ jobs:
         pre_command: export CGO_ENABLED=0
         ldflags: -extldflags -static
         # extra_files: LICENSE README.md
+        # https://github.com/wangyoucao577/go-release-action/issues/68
+        retry: 10
+        overwrite: true
