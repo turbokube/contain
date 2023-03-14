@@ -2,6 +2,8 @@
 [ -z "$DEBUG" ] || set -x
 set -eo pipefail
 
+go test ./pkg/...
+
 DOCKER=docker
 REGISTRY_PORT=22500
 REGISTRY_NAME=contain-test-registry

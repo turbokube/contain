@@ -13,7 +13,7 @@ func TestParse(t *testing.T) {
 		t.Errorf("%v", err)
 	}
 
-	if cfg.Base != "docker.io/busybox" {
+	if cfg.Base != "docker.io/library/busybox" {
 		t.Errorf("Unexpected base: %s", cfg.Base)
 	}
 	if len(cfg.Layers) != 1 {
