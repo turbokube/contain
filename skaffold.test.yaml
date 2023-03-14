@@ -10,15 +10,18 @@ build:
     context: ./test/localdir-app
     custom:
       buildCommand: ../../dist/contain-test -b docker.io/library/busybox
+  - image: localdir-app-dot
+    context: ./test/localdir-app
+    custom:
+      buildCommand: ../../dist/contain-test -b docker.io/library/busybox .
   - image: contextdir-app
     context: ./test
     custom:
-      buildCommand: ../../dist/contain-test -b docker.io/library/busybox ./localdir-app
+      buildCommand: ../dist/contain-test -b docker.io/library/busybox ./localdir-app
   - image: contextdir-config
-    # todo should contain.yaml be found in CWD or in build context dir?
     context: test
     custom:
-      buildCommand: ../../dist/contain-test -b docker.io/library/busybox localdir1
+      buildCommand: ../dist/contain-test localdir1
 
 test:
 - image: localdir1
@@ -27,3 +30,12 @@ test:
 - image: localdir-app
   structureTests:
   - ./test/localdir-app-test.yaml
+- image: localdir-app-dot
+  structureTests:
+  - ./test/localdir-app-test.yaml
+- image: contextdir-app
+  structureTests:
+  - ./test/localdir-app-test.yaml
+- image: contextdir-config
+  structureTests:
+  - ./test/localdir1/test.yaml

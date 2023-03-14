@@ -64,7 +64,7 @@ func ReadConfiguration(filePath string) ([]byte, error) {
 		if !filepath.IsAbs(filePath) {
 			dir, err := os.Getwd()
 			if err != nil {
-				zap.L().Error("Failed to get absolute path for config",
+				zap.L().Error("get absolute path for config",
 					zap.String("path", filePath),
 					zap.Error(err),
 				)
@@ -74,7 +74,7 @@ func ReadConfiguration(filePath string) ([]byte, error) {
 		}
 		contents, err := afero.ReadFile(Fs, filePath)
 		if err != nil {
-			zap.L().Error("Failed to read config from filesystem",
+			zap.L().Error("read config from filesystem",
 				zap.String("path", filePath),
 				zap.Error(err),
 			)

@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"path/filepath"
 
 	"github.com/c9h-to/contain/pkg/contain"
 	"github.com/c9h-to/contain/pkg/layers"
@@ -39,6 +40,31 @@ func main() {
 	defer undo()
 
 	var err error
+
+	workdir := flag.Arg(0)
+	if workdir != "" && workdir != "." && workdir != "./" {
+		workdir, err = filepath.Abs(workdir)
+		if err != nil {
+			zap.L().Fatal("absolute path", zap.String("arg", flag.Arg(0)), zap.Error(err))
+		}
+		stat, err := os.Stat(workdir)
+		if err != nil {
+			zap.L().Fatal("context path not found",
+				zap.String("arg", flag.Arg(0)),
+				zap.String("abs", workdir),
+				zap.Error(err),
+			)
+		}
+		if !stat.IsDir() {
+			zap.L().Fatal("context path not a directory",
+				zap.String("arg", flag.Arg(0)),
+				zap.String("abs", workdir),
+			)
+		}
+		chdir := contain.NewChdir(workdir)
+		defer chdir.Cleanup()
+	}
+
 	var config schemav1.ContainConfig
 	if base != "" {
 		zap.L().Info("got base arg", zap.String("base", base))
@@ -54,7 +80,7 @@ func main() {
 	if config.Tag == "" {
 		image, exists := os.LookupEnv("IMAGE")
 		if exists {
-			zap.L().Debug("Using tag from IMAGE env")
+			zap.L().Debug("target tag from IMAGE env")
 		}
 		config.Tag = image
 	}
