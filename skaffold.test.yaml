@@ -1,6 +1,9 @@
 apiVersion: skaffold/v3
 kind: Config
 build:
+  platforms:
+  - linux/amd64
+  - linux/arm64
   artifacts:
   - image: localdir1
     context: ./test/localdir1
@@ -22,6 +25,18 @@ build:
     context: test
     custom:
       buildCommand: ../dist/contain-test localdir1
+  - image: localdir-amd64
+    context: ./test/localdir-app
+    platforms:
+    - linux/amd64
+    custom:
+      buildCommand: ../../dist/contain-test -b docker.io/library/busybox
+  - image: localdir-arm64
+    context: ./test/localdir-app
+    platforms:
+    - linux/arm64
+    custom:
+      buildCommand: ../../dist/contain-test -b docker.io/library/busybox
 
 test:
 - image: localdir1

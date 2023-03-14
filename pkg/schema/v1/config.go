@@ -4,8 +4,9 @@ type ContainConfig struct {
 	// Base is the base image reference
 	Base string `yaml:"base"`
 	// Tag is the result reference to be pushed
-	Tag    string  `yaml:"tag"`
-	Layers []Layer `yaml:"layers,omitempty"`
+	Tag       string   `yaml:"tag"`
+	Platforms []string `yaml:"platforms"`
+	Layers    []Layer  `yaml:"layers,omitempty"`
 }
 
 type Layer struct {

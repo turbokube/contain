@@ -125,6 +125,14 @@ func (c *Contain) base() (v1.Image, error) {
 
 // Append is what you call once layers are ready
 func (c *Contain) Append(layers ...v1.Layer) (v1.Hash, error) {
+	// Platform support remains to be verified with for example docker hub
+	// See also https://github.com/google/go-containerregistry/issues/1456 and https://github.com/google/go-containerregistry/pull/1561
+	if len(c.config.Platforms) > 1 {
+		zap.L().Warn("unsupported multiple platforms, falling back to all", zap.Strings("platforms", c.config.Platforms))
+	}
+	if len(c.config.Platforms) == 1 {
+		zap.L().Warn("unsupported single platform, falling back to all", zap.String("platform", c.config.Platforms[0]))
+	}
 	noresult := v1.Hash{}
 	base, err := c.base()
 	if err != nil {

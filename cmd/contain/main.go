@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/c9h-to/contain/pkg/contain"
 	"github.com/c9h-to/contain/pkg/layers"
@@ -80,9 +81,18 @@ func main() {
 	if config.Tag == "" {
 		image, exists := os.LookupEnv("IMAGE")
 		if exists {
-			zap.L().Debug("target tag from IMAGE env")
+			zap.L().Debug("read IMAGE env", zap.String("tag", image))
+			config.Tag = image
 		}
-		config.Tag = image
+	}
+
+	if len(config.Platforms) == 0 {
+		platforms, exists := os.LookupEnv("PLATFORMS")
+		if exists {
+			p := strings.Split(platforms, ",")
+			zap.L().Debug("read PLATFORMS env", zap.Strings("platforms", p))
+			config.Platforms = p
+		}
 	}
 
 	layerBuilders := make([]layers.LayerBuilder, len(config.Layers))
