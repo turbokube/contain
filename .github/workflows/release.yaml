@@ -1,0 +1,28 @@
+on:
+  release:
+    types: [created]
+
+jobs:
+  releases-matrix:
+    name: Release Go Binary
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, windows, darwin]
+        goarch: [amd64, arm64]
+        exclude:
+        - goarch: arm64
+          goos: windows
+    steps:
+    - uses: actions/checkout@v3
+    - uses: wangyoucao577/go-release-action@efb9406897e4eff1aa2c7142223b096aec90f267
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        goos: ${{ matrix.goos }}
+        goarch: ${{ matrix.goarch }}
+        project_path: "./cmd/contain"
+        binary_name: contain
+        asset_name: "contain-${{ matrix.goos }}-${{ matrix.goarch }}"
+        pre_command: export CGO_ENABLED=0
+        ldflags: -extldflags -static
+        # extra_files: LICENSE README.md
