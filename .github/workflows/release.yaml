@@ -3,6 +3,8 @@ on:
     # go to https://github.com/solsson/contain/tags, chose "Create release" on a new tag
     types: [created]
 
+permissions: write-all
+
 jobs:
   releases-matrix:
     name: Release Go Binary
