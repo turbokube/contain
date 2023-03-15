@@ -28,7 +28,6 @@ jobs:
         asset_name: "contain-${{ github.event.release.tag_name }}-${{ matrix.goos }}-${{ matrix.goarch }}"
         pre_command: export CGO_ENABLED=0 && export GODEBUG=http2client=0
         ldflags: -extldflags -static
-        # extra_files: LICENSE README.md
-        # https://github.com/wangyoucao577/go-release-action/issues/68
-        retry: 10
-        overwrite: true
+        sha256sum: true
+        md5sum: true
+        compress_assets: "off"
