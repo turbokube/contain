@@ -1,6 +1,5 @@
 on:
   release:
-    # go to https://github.com/solsson/contain/tags, chose "Create release" on a new tag
     types: [created]
 
 permissions: write-all
@@ -29,5 +28,5 @@ jobs:
         pre_command: export CGO_ENABLED=0 && export GODEBUG=http2client=0
         ldflags: -extldflags -static
         sha256sum: true
-        md5sum: true
+        md5sum: false
         compress_assets: "off"
