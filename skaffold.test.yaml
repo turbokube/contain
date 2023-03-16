@@ -37,6 +37,10 @@ build:
     - linux/arm64
     custom:
       buildCommand: ../../dist/contain-test -b docker.io/library/busybox
+  - image: multilayer
+    context: ./test/multilayer
+    custom:
+      buildCommand: ../../dist/contain-test
 
 test:
 - image: localdir1
@@ -54,3 +58,6 @@ test:
 - image: contextdir-config
   structureTests:
   - ./test/localdir1/test.yaml
+- image: multilayer
+  structureTests:
+  - ./test/multilayer/test.yaml

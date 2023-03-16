@@ -98,7 +98,7 @@ func main() {
 		config, err = schema.ParseConfig(configPath)
 		if err != nil {
 			flag.Usage()
-			zap.L().Fatal("Can't start without config", zap.Error(err))
+			zap.L().Fatal("start requires config or base + env", zap.Error(err))
 		}
 	}
 
