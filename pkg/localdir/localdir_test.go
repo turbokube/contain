@@ -37,12 +37,12 @@ func TestFromFilesystemDir1(t *testing.T) {
 
 	expectDigest(localdir.Dir{
 		Path: "./testdata/dir1",
-	}, "sha256:8df27a258c18cb9211f9a48177fb663b6db9b1e4a484d5c1736b0bdc7989a38a", t)
+	}, "sha256:545dc99b3997be1f82cc1fc559ca9495e438eaf4d55d1827deb672cfc171504e", t)
 
 	expectDigest(localdir.Dir{
 		Path:          "./testdata/dir1",
 		ContainerPath: localdir.NewPathMapperPrepend("/app"),
-	}, "sha256:0461765c4503fbbcec27a53b6b9db9f413b098f65f84f79df0f9585b5e2294f7", t)
+	}, "sha256:5135d234403e9b548686de3a65ed302923b15a662e7a0a202efc2ea7d81d89e6", t)
 
 	ignoreA, err := patternmatcher.New([]string{"a.*"})
 	if err != nil {
@@ -52,7 +52,7 @@ func TestFromFilesystemDir1(t *testing.T) {
 		Path:          "./testdata/dir1",
 		ContainerPath: localdir.NewPathMapperPrepend("/app"),
 		Ignore:        ignoreA,
-	}, "sha256:af46f6ef1fbb03620c8412ccb2e3f54816c3ea337557ba440ebbd95c67d79ee0", t)
+	}, "sha256:fad4816a0e3821e9f23b6b4a9b2003d201ce17ad67ccb1b28734c0ed675dad7b", t)
 
 	ignoreAll, err := patternmatcher.New([]string{"*"})
 	if err != nil {

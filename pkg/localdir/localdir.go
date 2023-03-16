@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/google/go-containerregistry/pkg/crane"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/moby/patternmatcher"
 	"go.uber.org/zap"
@@ -91,6 +90,6 @@ func FromFilesystem(dir Dir) (v1.Layer, error) {
 		return nil, fmt.Errorf("dir resulted in empty layer: %v", dir)
 	}
 
-	return crane.Layer(filemap)
+	return Layer(filemap)
 
 }
