@@ -97,6 +97,11 @@ func main() {
 		defer chdir.Cleanup()
 	}
 
+	if base == "" && os.Getenv("CONTAIN_BASE") != "" {
+		base = os.Getenv("CONTAIN_BASE")
+		zap.L().Debug("base from env")
+	}
+
 	var config schemav1.ContainConfig
 	config, err = schema.ParseConfig(configPath)
 	if err != nil {

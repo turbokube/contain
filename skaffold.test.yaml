@@ -17,6 +17,10 @@ build:
     context: ./test/localdir-app
     custom:
       buildCommand: contain -x -b docker.io/library/busybox .
+  - image: localdir-app-env
+    context: ./test/localdir-app
+    custom:
+      buildCommand: CONTAIN_BASE=docker.io/library/busybox contain -x
   - image: contextdir-app
     context: ./test
     custom:
@@ -66,6 +70,9 @@ test:
   structureTests:
   - ./test/localdir-app-test.yaml
 - image: localdir-app-dot
+  structureTests:
+  - ./test/localdir-app-test.yaml
+- image: localdir-app-env
   structureTests:
   - ./test/localdir-app-test.yaml
 - image: contextdir-app
