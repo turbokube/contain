@@ -42,8 +42,7 @@ func parseConfig(buf []byte) (v1.ContainConfig, error) {
 	return config, nil
 }
 
-// ReadConfiguration reads a `contain.yaml` configuration and
-// returns its content.
+// ReadConfiguration reads config and returns content
 func ReadConfiguration(filePath string) ([]byte, error) {
 	// https://github.com/GoogleContainerTools/skaffold/blob/v2.2.0/pkg/skaffold/util/config.go#L38
 	switch {

@@ -17,15 +17,29 @@ import (
 )
 
 var (
-	base string
+	BUILD      = "development"
+	configPath = "contain.yaml"
+	helpStream = os.Stderr
+	version    bool
+	help       bool
+	base       string
 )
 
 func init() {
+	flag.BoolVar(&version, "version", false, "print build version")
+	flag.BoolVar(&help, "help", false, "print usage")
 	flag.StringVar(&base,
 		"b",
 		"",
 		"base image (implies tag = $IMAGE, local dir = $PWD, container path = /app)",
 	)
+	flag.Usage = func() {
+		fmt.Fprintf(helpStream, "contain version: %s\n", BUILD)
+		fmt.Fprintf(helpStream, "\nUsage: contain [context path]\n")
+		fmt.Fprintf(helpStream, "Context path contains a file %s or the flag -b must be provided\n", configPath)
+		fmt.Fprintf(helpStream, "\n")
+		flag.PrintDefaults()
+	}
 	flag.Parse()
 }
 
@@ -40,6 +54,15 @@ func main() {
 	defer logger.Sync()
 	undo := zap.ReplaceGlobals(logger)
 	defer undo()
+
+	if version {
+		fmt.Fprintf(helpStream, "%s\n", BUILD)
+		os.Exit(0)
+	}
+	if help {
+		flag.Usage()
+		os.Exit(0)
+	}
 
 	var err error
 
@@ -70,11 +93,11 @@ func main() {
 	var config schemav1.ContainConfig
 	if base != "" {
 		zap.L().Info("got base arg", zap.String("base", base))
-		// TODO last arg should be CWD, defaults to PWD
 		config = schema.TemplateApp(base)
 	} else {
-		config, err = schema.ParseConfig("contain.yaml")
+		config, err = schema.ParseConfig(configPath)
 		if err != nil {
+			flag.Usage()
 			zap.L().Fatal("Can't start without config", zap.Error(err))
 		}
 	}

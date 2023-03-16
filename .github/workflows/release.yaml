@@ -26,7 +26,10 @@ jobs:
         binary_name: contain
         asset_name: "contain-${{ github.event.release.tag_name }}-${{ matrix.goos }}-${{ matrix.goarch }}"
         pre_command: export CGO_ENABLED=0 && export GODEBUG=http2client=0
-        ldflags: -extldflags -static
+        ldflags: >-
+          -extldflags
+          -static
+          -X main.BUILD=${{ github.event.release.tag_name }}-${{ github.sha }}-${{ matrix.goos }}-${{ matrix.goarch }}
         sha256sum: true
         md5sum: false
         compress_assets: "off"
