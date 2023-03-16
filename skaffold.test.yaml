@@ -8,39 +8,59 @@ build:
   - image: localdir1
     context: ./test/localdir1
     custom:
-      buildCommand: ../../dist/contain-test
+      buildCommand: contain -x
   - image: localdir-app
     context: ./test/localdir-app
     custom:
-      buildCommand: ../../dist/contain-test -b docker.io/library/busybox
+      buildCommand: contain -x -b docker.io/library/busybox
   - image: localdir-app-dot
     context: ./test/localdir-app
     custom:
-      buildCommand: ../../dist/contain-test -b docker.io/library/busybox .
+      buildCommand: contain -x -b docker.io/library/busybox .
+  - image: localdir-app-env
+    context: ./test/localdir-app
+    custom:
+      buildCommand: CONTAIN_BASE=docker.io/library/busybox contain -x
   - image: contextdir-app
     context: ./test
     custom:
-      buildCommand: ../dist/contain-test -b docker.io/library/busybox ./localdir-app
+      buildCommand: contain -x -b docker.io/library/busybox ./localdir-app
   - image: contextdir-config
     context: test
     custom:
-      buildCommand: ../dist/contain-test localdir1
+      buildCommand: contain -x localdir1
   - image: localdir-amd64
     context: ./test/localdir-app
     platforms:
     - linux/amd64
     custom:
-      buildCommand: ../../dist/contain-test -b docker.io/library/busybox
+      buildCommand: contain -x -b docker.io/library/busybox
   - image: localdir-arm64
     context: ./test/localdir-app
     platforms:
     - linux/arm64
     custom:
-      buildCommand: ../../dist/contain-test -b docker.io/library/busybox
+      buildCommand: contain -x -b docker.io/library/busybox
   - image: multilayer
     context: ./test/multilayer
     custom:
-      buildCommand: ../../dist/contain-test
+      buildCommand: contain -x
+  - image: config-override
+    context: ./test/localdir1
+    custom:
+      buildCommand: contain -x -b gcr.io/distroless/base-debian11:debug-nonroot
+  - image: config-stdin
+    context: ./test
+    custom:
+      buildCommand: |-
+        cat <<EOF | IMAGE="" contain -x -c -
+        base: gcr.io/distroless/base-debian11:debug-nonroot
+        tag: $IMAGE
+        layers:
+        - localDir:
+            path: localdir-app
+            containerPath: /config-stdin
+        EOF
 
 test:
 - image: localdir1
@@ -52,6 +72,9 @@ test:
 - image: localdir-app-dot
   structureTests:
   - ./test/localdir-app-test.yaml
+- image: localdir-app-env
+  structureTests:
+  - ./test/localdir-app-test.yaml
 - image: contextdir-app
   structureTests:
   - ./test/localdir-app-test.yaml
@@ -61,3 +84,9 @@ test:
 - image: multilayer
   structureTests:
   - ./test/multilayer/test.yaml
+- image: config-override
+  structureTests:
+  - ./test/config-override-test.yaml
+- image: config-stdin
+  structureTests:
+  - ./test/config-override-test.yaml

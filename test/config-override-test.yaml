@@ -1,0 +1,6 @@
+schemaVersion: '2.0.0'
+fileExistenceTests:
+- name: 'busybox'
+  # the distroless base that we override to only as /busybox/sh
+  path: '/bin/sh'
+  shouldExist: false

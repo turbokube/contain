@@ -73,10 +73,6 @@ func ReadConfiguration(filePath string) ([]byte, error) {
 		}
 		contents, err := afero.ReadFile(Fs, filePath)
 		if err != nil {
-			zap.L().Error("read config from filesystem",
-				zap.String("path", filePath),
-				zap.Error(err),
-			)
 			return []byte{}, err
 		}
 
