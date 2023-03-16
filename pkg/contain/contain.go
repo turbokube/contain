@@ -182,7 +182,43 @@ func (c *Contain) annotate(image v1.Image, baseDigest v1.Hash) v1.Image {
 }
 
 func (c *Contain) push(image v1.Image) error {
-	return remote.Write(c.tagRef, image, c.craneOptions.Remote...)
+	mediaType, err := image.MediaType()
+	if err != nil {
+		return err
+	}
+	zap.L().Info("pushing", zap.String("mediaType", string(mediaType)))
+
+	progressChan := make(chan v1.Update, 200)
+	errChan := make(chan error, 1)
+
+	go func() {
+		options := append(c.craneOptions.Remote, remote.WithProgress(progressChan))
+		// options = append(options, remote.WithPlatform(*c.craneOptions.Platform)) // does this make any difference?
+		errChan <- remote.Write(
+			c.tagRef,
+			image,
+			options...,
+		)
+	}()
+
+	for update := range progressChan {
+		if update.Error != nil {
+			return err
+		}
+
+		if update.Complete == update.Total {
+			zap.L().Info("pushed", zap.Int64("completed", update.Complete), zap.Int64("total", update.Total))
+		} else {
+			// quite frequent, we need percentage or something
+			zap.L().Debug("pushing", zap.Int64("completed", update.Complete), zap.Int64("total", update.Total))
+		}
+
+		if err != nil {
+			return err
+		}
+	}
+
+	return <-errChan
 }
 
 func (c *Contain) LayerType() types.MediaType {
