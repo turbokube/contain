@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,6 +84,13 @@ func main() {
 		if exists {
 			zap.L().Debug("read IMAGE env", zap.String("tag", image))
 			config.Tag = image
+		} else {
+			repo, repoExists := os.LookupEnv("IMAGE_REPO")
+			rtag, rtagExists := os.LookupEnv("IMAGE_TAG")
+			if repoExists && rtagExists {
+				config.Tag = fmt.Sprintf("%s:%s", repo, rtag)
+				zap.L().Debug("read IMAGE_REPO and IMAGE_TAG env", zap.String("tag", config.Tag))
+			}
 		}
 	}
 
