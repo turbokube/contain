@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	progressReportMinInterval = "5s"
+	progressReportMinInterval = "1s"
 )
 
 type Contain struct {
