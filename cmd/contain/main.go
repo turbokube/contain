@@ -51,7 +51,7 @@ func init() {
 }
 
 func main() {
-	consoleDebugging := zapcore.Lock(os.Stdout)
+	consoleDebugging := zapcore.Lock(os.Stderr)
 	consoleEncoder := zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig())
 	consoleEnabler := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
 		return debug || lvl != zapcore.DebugLevel
@@ -176,5 +176,9 @@ func main() {
 		layers[i] = layer
 	}
 
-	c.Append(layers...)
+	hash, err := c.Append(layers...)
+	if err != nil {
+		zap.L().Fatal("append", zap.Error(err))
+	}
+	fmt.Printf("%s@%v\n", config.Tag, hash)
 }

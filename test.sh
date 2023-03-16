@@ -36,6 +36,12 @@ localtest1_arm64=$(crane --platform=linux/arm64 digest $localtest1)
 localtest1_base=$(crane manifest $localtest1 | jq -r '.annotations."org.opencontainers.image.base.name"')
 [ "$localtest1_base" = "index.docker.io/library/busybox:latest" ] || (echo "unexpected annotations $localtest1_base" && exit 1)
 
+[ $(cat test/example-stdout.out | wc -l) -eq 1 ] || {
+  echo "Error: stdout should be a single line, the image with digest. Got:"
+  cat test/example-stdout.out
+  exit 1
+}
+
 for F in $(find test -name skaffold.fail-\*.yaml); do
   echo "=> Fail test: $F ..."
   RESULT=0

@@ -61,6 +61,15 @@ build:
             path: localdir-app
             containerPath: /config-stdin
         EOF
+  - image: localdir-streams
+    context: ./test/localdir-app
+    custom:
+      buildCommand: >
+        contain -x -b docker.io/library/busybox
+        1> ../example-stdout.out
+        2> ../example-stderr.out;
+        echo "------ stdout ------"; cat ../example-stdout.out;
+        echo "------ stderr ------"; cat ../example-stderr.out;
 
 test:
 - image: localdir1
