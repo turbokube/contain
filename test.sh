@@ -2,6 +2,9 @@
 [ -z "$DEBUG" ] || set -x
 set -eo pipefail
 
+# additional args are passed to skaffold build
+# to build a subset use for example: -b config-override,config-stdin
+
 go test ./pkg/...
 
 DOCKER=docker
@@ -11,13 +14,14 @@ REGISTRY_NAME=contain-test-registry
 $DOCKER inspect $REGISTRY_NAME 2>/dev/null >/dev/null ||
   $DOCKER run --rm -d -p 22500:5000 --name $REGISTRY_NAME registry:2
 
-mkdir -p dist
-go build -ldflags="-X main.BUILD=test-$(uname -m)" -o dist/contain-test cmd/contain/main.go
+mkdir -p dist/test
+go build -ldflags="-X main.BUILD=test-$(uname -m)" -o dist/test/contain cmd/contain/main.go
+export PATH=$(pwd)/dist/test:$PATH
 
-./dist/contain-test --version
-./dist/contain-test --help
+contain --version 2>&1 | grep '^test-'
+contain --help
 
-skaffold --default-repo=localhost:22500 -f skaffold.test.yaml build --file-output=dist/test.artifacts
+skaffold --default-repo=localhost:22500 -f skaffold.test.yaml build --file-output=dist/test.artifacts $@
 
 skaffold -f skaffold.test.yaml test -a dist/test.artifacts
 

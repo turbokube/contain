@@ -18,16 +18,23 @@ import (
 
 var (
 	BUILD      = "development"
-	configPath = "contain.yaml"
 	helpStream = os.Stderr
 	version    bool
 	help       bool
+	debug      bool
+	configPath string
 	base       string
 )
 
 func init() {
 	flag.BoolVar(&version, "version", false, "print build version")
 	flag.BoolVar(&help, "help", false, "print usage")
+	flag.BoolVar(&debug, "x", false, "logs at debug level")
+	flag.StringVar(&configPath,
+		"c",
+		"contain.yaml",
+		"config file path relative to context dir, or - for stdin",
+	)
 	flag.StringVar(&base,
 		"b",
 		"",
@@ -47,7 +54,7 @@ func main() {
 	consoleDebugging := zapcore.Lock(os.Stdout)
 	consoleEncoder := zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig())
 	consoleEnabler := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
-		return true
+		return debug || lvl != zapcore.DebugLevel
 	})
 	core := zapcore.NewCore(consoleEncoder, consoleDebugging, consoleEnabler)
 	logger := zap.New(core)
@@ -91,14 +98,26 @@ func main() {
 	}
 
 	var config schemav1.ContainConfig
-	if base != "" {
-		zap.L().Info("got base arg", zap.String("base", base))
-		config = schema.TemplateApp(base)
-	} else {
-		config, err = schema.ParseConfig(configPath)
-		if err != nil {
+	config, err = schema.ParseConfig(configPath)
+	if err != nil {
+		// TODO we should probably distinguish between different types of config errors first
+		zap.L().Debug("config parse failed, expected if invoked with -b",
+			zap.Error(err),
+			zap.String("-b", base),
+		)
+		if base == "" {
 			flag.Usage()
 			zap.L().Fatal("start requires config or base + env", zap.Error(err))
+		}
+		zap.L().Info("config from template", zap.String("base", base))
+		config = schema.TemplateApp(base)
+	} else {
+		// How does skaffold deal with config yaml defaults and with overrides from CLI? Just code, or something more clever?
+		if base != "" {
+			config.Base = base
+			zap.L().Debug("config parsed, base overridden", zap.String("base", base))
+		} else {
+			zap.L().Debug("config parsed", zap.String("base", config.Base))
 		}
 	}
 
