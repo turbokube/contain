@@ -3,6 +3,7 @@ package contain
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	schema "github.com/c9h-to/contain/pkg/schema/v1"
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -15,6 +16,10 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/types"
 	specsv1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"go.uber.org/zap"
+)
+
+const (
+	progressReportMinInterval = "5s"
 )
 
 type Contain struct {
@@ -188,12 +193,16 @@ func (c *Contain) push(image v1.Image) error {
 	}
 	zap.L().Info("pushing", zap.String("mediaType", string(mediaType)))
 
+	debounce, err := time.ParseDuration(progressReportMinInterval)
+	if err != nil {
+		zap.L().Fatal("failed to parse debounce interval", zap.String("value", progressReportMinInterval), zap.Error(err))
+	}
+
 	progressChan := make(chan v1.Update, 200)
 	errChan := make(chan error, 1)
 
 	go func() {
 		options := append(c.craneOptions.Remote, remote.WithProgress(progressChan))
-		// options = append(options, remote.WithPlatform(*c.craneOptions.Platform)) // does this make any difference?
 		errChan <- remote.Write(
 			c.tagRef,
 			image,
@@ -201,16 +210,21 @@ func (c *Contain) push(image v1.Image) error {
 		)
 	}()
 
+	logger := zap.L()
+	nextProgress := time.Now().Add(debounce)
+
 	for update := range progressChan {
 		if update.Error != nil {
 			return err
 		}
 
 		if update.Complete == update.Total {
-			zap.L().Info("pushed", zap.Int64("completed", update.Complete), zap.Int64("total", update.Total))
+			logger.Info("pushed", zap.Int64("completed", update.Complete), zap.Int64("total", update.Total))
 		} else {
-			// quite frequent, we need percentage or something
-			zap.L().Debug("pushing", zap.Int64("completed", update.Complete), zap.Int64("total", update.Total))
+			if time.Now().After(nextProgress) {
+				nextProgress = time.Now().Add(debounce)
+				logger.Info("push", zap.Int64("completed", update.Complete), zap.Int64("total", update.Total))
+			}
 		}
 
 		if err != nil {
