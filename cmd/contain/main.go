@@ -119,8 +119,13 @@ func main() {
 	} else {
 		// How does skaffold deal with config yaml defaults and with overrides from CLI? Just code, or something more clever?
 		if base != "" {
+			if config.Base != "" {
+				config.Status.Overrides.Base = true
+				zap.L().Debug("config parsed, base overridden", zap.String("base", base))
+			} else {
+				zap.L().Debug("config parsed, base set", zap.String("base", base))
+			}
 			config.Base = base
-			zap.L().Debug("config parsed, base overridden", zap.String("base", base))
 		} else {
 			zap.L().Debug("config parsed", zap.String("base", config.Base))
 		}
@@ -149,6 +154,21 @@ func main() {
 			config.Platforms = p
 		}
 	}
+
+	var aboutConfig = make([]zap.Field, 0)
+	if config.Status.Template {
+		aboutConfig = append(aboutConfig, zap.Bool("templated", config.Status.Template))
+	} else {
+		aboutConfig = append(aboutConfig,
+			zap.String("md5", config.Status.Md5),
+			zap.String("sha256", config.Status.Sha256),
+		)
+	}
+	if config.Status.Overrides.Base {
+		aboutConfig = append(aboutConfig, zap.Bool("overriddenBase", true))
+	}
+
+	zap.L().Info("config", aboutConfig...)
 
 	layerBuilders := make([]layers.LayerBuilder, len(config.Layers))
 	for i, layerCfg := range config.Layers {
@@ -180,5 +200,6 @@ func main() {
 	if err != nil {
 		zap.L().Fatal("append", zap.Error(err))
 	}
+
 	fmt.Printf("%s@%v\n", config.Tag, hash)
 }

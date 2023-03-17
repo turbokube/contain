@@ -36,6 +36,9 @@ func IgnoreDefault() []string {
 
 func TemplateApp(base string) v1.ContainConfig {
 	return v1.ContainConfig{
+		Status: v1.ContainConfigStatus{
+			Template: true,
+		},
 		Base: base,
 		Tag:  TagFromEnvReuired(),
 		Layers: []v1.Layer{

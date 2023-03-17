@@ -2,6 +2,8 @@ package schema
 
 import (
 	"bytes"
+	"crypto/md5"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -39,6 +41,8 @@ func parseConfig(buf []byte) (v1.ContainConfig, error) {
 	decoder.KnownFields(true)
 	var config v1.ContainConfig
 	decoder.Decode(&config)
+	config.Status.Sha256 = fmt.Sprintf("%x", sha256.Sum256(buf))
+	config.Status.Md5 = fmt.Sprintf("%x", md5.Sum(buf))
 	return config, nil
 }
 
