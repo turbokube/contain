@@ -22,6 +22,10 @@ type ContainConfigOverrides struct {
 }
 
 type Layer struct {
+	// generic, supported for applicable layer types
+	Uid  uint8
+	Gid  uint8
+	Mode // TODO
 	// exactly one of the following
 	LocalDir LocalDir `yaml:"localDir,omitempty"`
 }
