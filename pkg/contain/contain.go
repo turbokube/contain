@@ -69,20 +69,6 @@ func NewContain(config *schema.ContainConfig) (*Contain, error) {
 	return &c, nil
 }
 
-func NewContainSimple(base string, localDir string, containerPath string) (*Contain, error) {
-	return NewContain(&schema.ContainConfig{
-		Base: base,
-		Layers: []schema.Layer{
-			{
-				LocalDir: schema.LocalDir{
-					Path:          localDir,
-					ContainerPath: containerPath,
-				},
-			},
-		},
-	})
-}
-
 func (c *Contain) Options() *[]crane.Option {
 	zap.L().Fatal("TODO how?")
 	return nil
