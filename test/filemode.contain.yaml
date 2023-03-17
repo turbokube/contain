@@ -1,0 +1,8 @@
+base: gcr.io/distroless/base-debian11:debug-nonroot
+layers:
+- localDir:
+    path: localdir1
+    containerPath: /filemode
+    uid: 65532
+    gid: 65534
+    mode: 0766

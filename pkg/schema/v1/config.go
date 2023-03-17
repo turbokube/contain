@@ -23,9 +23,13 @@ type ContainConfigOverrides struct {
 
 type Layer struct {
 	// generic, supported for applicable layer types
-	Uid  uint8
-	Gid  uint8
-	Mode // TODO
+	Uid uint16 `yaml:"uid,omitempty"`
+	Gid uint16 `yaml:"gid,omitempty"`
+
+	// Mode bits to use on files, must be a value between 0 and 0777.
+	// YAML accepts both octal and decimal values, JSON requires decimal values for mode bits.
+	FileMode int32 `yaml:"fileMode,omitempty"`
+
 	// exactly one of the following
 	LocalDir LocalDir `yaml:"localDir,omitempty"`
 }
