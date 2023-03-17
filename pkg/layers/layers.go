@@ -37,6 +37,16 @@ func newLayerBuilderLocalDir(cfg schema.LocalDir) (LayerBuilder, error) {
 			return nil, fmt.Errorf("patternatcher from: %v", cfg.Ignore)
 		}
 	}
+	if cfg.MaxFiles > 0 {
+		dir.MaxFiles = cfg.MaxFiles
+	}
+	if cfg.MaxSize != "" {
+		s, err := localdir.NewSize(cfg.MaxSize)
+		if err != nil {
+			return nil, err
+		}
+		dir.MaxSize = s
+	}
 	return func() (v1.Layer, error) {
 		return localdir.FromFilesystem(dir)
 	}, nil

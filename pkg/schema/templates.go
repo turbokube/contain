@@ -44,6 +44,8 @@ func TemplateApp(base string) v1.ContainConfig {
 					Path:          ".",
 					ContainerPath: "/app",
 					Ignore:        IgnoreDefault(),
+					MaxFiles:      100,
+					MaxSize:       "104857600", // "100Mi"
 				},
 			},
 		},

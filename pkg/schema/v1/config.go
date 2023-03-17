@@ -20,4 +20,6 @@ type LocalDir struct {
 	Path          string   `yaml:"path"`
 	ContainerPath string   `yaml:"containerPath,omitempty"`
 	Ignore        []string `yaml:"ignore,omitempty"`
+	MaxFiles      int      `yaml:"maxFiles,omitempty"`
+	MaxSize       string   `yaml:"maxSize,omitempty"`
 }

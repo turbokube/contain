@@ -18,6 +18,8 @@ type Dir struct {
 	Path          string
 	ContainerPath PathMapper
 	Ignore        *patternmatcher.PatternMatcher
+	MaxFiles      int
+	MaxSize       int64
 }
 
 func NewPathMapperPrepend(prependDir string) PathMapper {
@@ -52,11 +54,12 @@ func FromFilesystem(dir Dir) (v1.Layer, error) {
 		dir.Ignore, _ = patternmatcher.New([]string{})
 	}
 
+	bytesTotal := 0
 	filemap := make(map[string][]byte)
 
 	fileSystem := os.DirFS(dir.Path)
 
-	fs.WalkDir(fileSystem, ".", func(path string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(fileSystem, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -71,9 +74,16 @@ func FromFilesystem(dir Dir) (v1.Layer, error) {
 			zap.L().Debug("ignored", zap.String("path", path))
 			return nil
 		}
+		if dir.MaxFiles > 0 && len(filemap) >= dir.MaxFiles {
+			return fmt.Errorf("number of files exceeds max from layer config: %d", dir.MaxFiles)
+		}
 		file, err := fs.ReadFile(fileSystem, path)
 		if err != nil {
 			return err
+		}
+		bytesTotal = bytesTotal + len(file)
+		if dir.MaxSize > 0 && bytesTotal > dir.MaxFiles {
+			return fmt.Errorf("accumulated file size exceeds max size from layer config: %d", dir.MaxSize)
 		}
 		topath := dir.ContainerPath(path)
 		filemap[topath] = file
@@ -81,10 +91,15 @@ func FromFilesystem(dir Dir) (v1.Layer, error) {
 			zap.String("from", path),
 			zap.String("to", topath),
 			zap.Int("size", len(file)),
+			zap.Int("sizeLayer", bytesTotal),
 		)
 
 		return nil
 	})
+
+	if err != nil {
+		return nil, err
+	}
 
 	if len(filemap) == 0 {
 		return nil, fmt.Errorf("dir resulted in empty layer: %v", dir)

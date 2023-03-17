@@ -1,0 +1,16 @@
+apiVersion: skaffold/v3
+kind: Config
+build:
+  artifacts:
+  - image: failtest-maxfiles
+    context: ./test
+    custom:
+      buildCommand: |-
+        cat <<EOF | contain -x -c -
+        base: busybox
+        layers:
+        - localDir:
+            path: localdir1
+            containerPath: /app
+            maxFiles: 1
+        EOF

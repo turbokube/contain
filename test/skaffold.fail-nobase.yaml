@@ -2,7 +2,7 @@ apiVersion: skaffold/v3
 kind: Config
 build:
   artifacts:
-  - image: localdir-app
+  - image: failtest-nobase
     context: ./test/localdir-app
     custom:
-      buildCommand: ../../dist/contain-test
+      buildCommand: contain -x
