@@ -91,15 +91,16 @@ func FromFilesystem(dir Dir) (v1.Layer, error) {
 			zap.String("from", path),
 			zap.String("to", topath),
 			zap.Int("size", len(file)),
-			zap.Int("sizeLayer", bytesTotal),
 		)
 
 		return nil
 	})
 
 	if err != nil {
+		zap.L().Error("layer buffer failed", zap.Int("files", len(filemap)), zap.Int("bytes", bytesTotal))
 		return nil, err
 	}
+	zap.L().Info("layer buffer created", zap.Int("files", len(filemap)), zap.Int("bytes", bytesTotal))
 
 	if len(filemap) == 0 {
 		return nil, fmt.Errorf("dir resulted in empty layer: %v", dir)
