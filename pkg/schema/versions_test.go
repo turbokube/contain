@@ -3,7 +3,7 @@ package schema_test
 import (
 	"testing"
 
-	"github.com/c9h-to/contain/pkg/schema"
+	"github.com/turbokube/contain/pkg/schema"
 )
 
 func TestParse(t *testing.T) {

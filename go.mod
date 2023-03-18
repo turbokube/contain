@@ -1,4 +1,4 @@
-module github.com/c9h-to/contain
+module github.com/turbokube/contain
 
 go 1.20
 
@@ -28,5 +28,5 @@ require (
 	go.uber.org/multierr v1.6.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.6.0 // indirect
-	golang.org/x/text v0.3.7 // indirect
+	golang.org/x/text v0.8.0 // indirect
 )

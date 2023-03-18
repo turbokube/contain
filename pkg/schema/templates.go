@@ -3,7 +3,7 @@ package schema
 import (
 	"os"
 
-	v1 "github.com/c9h-to/contain/pkg/schema/v1"
+	v1 "github.com/turbokube/contain/pkg/schema/v1"
 	"go.uber.org/zap"
 )
 

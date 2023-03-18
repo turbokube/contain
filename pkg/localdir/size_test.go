@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/c9h-to/contain/pkg/localdir"
+	"github.com/turbokube/contain/pkg/localdir"
 )
 
 func TestParse(t *testing.T) {
