@@ -19,9 +19,8 @@ import (
 )
 
 const (
-	owner   = "turbokube"
-	repo    = "contain"
-	license = "MPL-2.0"
+	owner = "turbokube"
+	repo  = "contain"
 )
 
 var (
@@ -37,10 +36,17 @@ type ContainBin struct {
 	Contain string `json:"bin"`
 }
 
+type ParentPackage struct {
+	Name     string `json:"name"`
+	Homepage string `json:"homepage"`
+	Licence  string `json:"license"`
+}
+
 type BinPackage struct {
 	Name        string     `json:"name"`
 	Version     string     `json:"version"`
 	Description string     `json:"description,omitempty"`
+	Homepage    string     `json:"homepage,omitempty"`
 	Repository  string     `json:"repository,omitempty"`
 	Licence     string     `json:"license,omitempty"`
 	Bin         ContainBin `json:"bin"`
@@ -130,6 +136,16 @@ func main() {
 	var publishRelease *github.RepositoryRelease
 
 	var err error
+
+	parent := ParentPackage{}
+	parentP, err := ioutil.ReadFile("package.json")
+	if err != nil {
+		zap.L().Fatal("read package.json", zap.Error(err))
+	}
+	if err := json.Unmarshal(parentP, &parent); err != nil {
+		zap.L().Fatal("unmarshal package.json", zap.Error(err))
+	}
+
 	client := github.NewClient(nil)
 	repository, _, err := client.Repositories.Get(ctx, owner, repo)
 	if err != nil {
@@ -166,17 +182,12 @@ func main() {
 		}
 	}
 
-	generatePackages(ctx, client, repository, publishRelease)
-
-}
-
-func generatePackages(ctx context.Context, client *github.Client, repository *github.Repository, release *github.RepositoryRelease) {
 	var remainingWork = make([]string, 0)
-	parent, err := filepath.Abs("npm")
+	npm, err := filepath.Abs("npm")
 	if err != nil {
 		zap.L().Fatal("parent dir", zap.Error(err))
 	}
-	for _, asset := range release.Assets {
+	for _, asset := range publishRelease.Assets {
 		match := releaseBinaryName.FindStringSubmatch(*asset.Name)
 		zap.L().Debug("asset", zap.String("name", *asset.Name), zap.Strings("match", match))
 		if match[5] != "" {
@@ -187,16 +198,18 @@ func generatePackages(ctx context.Context, client *github.Client, repository *gi
 		o := NewOs(match[2])
 		cpu := NewCPU(match[3])
 		p := BinPackage{
-			Name:    fmt.Sprintf("@turbokube/contain-%s-%s", o, cpu),
-			Version: version,
+			Name:        fmt.Sprintf("@turbokube/contain-%s-%s", o, cpu),
+			Version:     version,
+			Homepage:    parent.Homepage,
+			Description: fmt.Sprintf("Platform specific (%s-%s) binary package for %s", o, cpu, parent.Name),
 			Bin: ContainBin{
 				Contain: match[0],
 			},
-			Licence: license,
+			Licence: parent.Licence,
 			Os:      []OS{o},
 			Cpu:     []CPU{cpu},
 		}
-		dir := path.Join(parent, p.Name)
+		dir := path.Join(npm, p.Name)
 		bindir := path.Join(dir, "bin")
 		if err := os.MkdirAll(bindir, 0755); err != nil {
 			zap.L().Fatal("package dir", zap.Error(err))
@@ -233,8 +246,11 @@ func generatePackages(ctx context.Context, client *github.Client, repository *gi
 		if err != nil {
 			zap.L().Fatal("download body", zap.String("url", url), zap.String("to", bin), zap.Error(err))
 		}
+		if err := out.Chmod(0755); err != nil {
+			zap.L().Fatal("bin chmod", zap.Error(err))
+		}
 		zap.L().Info("generated package", zap.String("at", dir), zap.Int64("binSize", n))
-		remainingWork = append(remainingWork, fmt.Sprintf("(cd bin/%s; npm publish --access public)", p.Name))
+		remainingWork = append(remainingWork, fmt.Sprintf("(cd npm/%s; npm publish --access public)", p.Name))
 	}
 	fmt.Println(strings.Join(remainingWork, "\n"))
 }
