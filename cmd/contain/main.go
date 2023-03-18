@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/c9h-to/contain/pkg/contain"
-	"github.com/c9h-to/contain/pkg/layers"
-	"github.com/c9h-to/contain/pkg/schema"
-	schemav1 "github.com/c9h-to/contain/pkg/schema/v1"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/turbokube/contain/pkg/contain"
+	"github.com/turbokube/contain/pkg/layers"
+	"github.com/turbokube/contain/pkg/schema"
+	schemav1 "github.com/turbokube/contain/pkg/schema/v1"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )

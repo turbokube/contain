@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	schema "github.com/c9h-to/contain/pkg/schema/v1"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -15,6 +14,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/types"
 	specsv1 "github.com/opencontainers/image-spec/specs-go/v1"
+	schema "github.com/turbokube/contain/pkg/schema/v1"
 	"go.uber.org/zap"
 )
 
