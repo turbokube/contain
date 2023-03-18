@@ -1,5 +1,5 @@
 {
-  "name": "contain",
+  "name": "@turbokube/contain",
   "version": "0.2.1",
   "description": "Simple declarative container builds from local artifacts",
   "main": "bin/main.js",
@@ -20,10 +20,10 @@
   },
   "homepage": "https://github.com/turbokube/contain#readme",
   "optionalDependencies": {
-    "@contain/darwin-arm64": "0.2.1",
-    "@contain/darwin-x64": "0.2.1",
-    "@contain/linux-arm64": "0.2.1",
-    "@contain/linux-x64": "0.2.1",
-    "@contain/win32-x64": "0.2.1"
+    "@turbokube/contain-darwin-arm64": "0.2.1",
+    "@turbokube/contain-darwin-x64": "0.2.1",
+    "@turbokube/contain-linux-arm64": "0.2.1",
+    "@turbokube/contain-linux-x64": "0.2.1",
+    "@turbokube/contain-win32-x64": "0.2.1"
   }
 }
