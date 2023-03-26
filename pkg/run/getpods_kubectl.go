@@ -3,6 +3,7 @@ package run
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"os/exec"
 
 	schema "github.com/turbokube/contain/pkg/schema/v1"
@@ -47,7 +48,9 @@ func PodInfo(config schema.ContainConfigSync) ([]Runpod, error) {
 	if config.Namespace != "" {
 		arg = append(arg, "-n", config.Namespace)
 	}
+	addEnv := []string{}
 	cmd := exec.Command("kubectl", arg...)
+	cmd.Env = append(os.Environ(), addEnv...)
 	var outbuf, errbuf bytes.Buffer
 	cmd.Stdout = &outbuf
 	cmd.Stderr = &errbuf

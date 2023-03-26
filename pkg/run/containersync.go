@@ -116,7 +116,7 @@ func (c *Containersync) PodWait(attempt int) (*SyncTarget, error) {
 			zap.Duration("wait", c.config.Sync.GetAttemptsWait),
 		)
 		time.Sleep(c.config.Sync.GetAttemptsWait)
-		c.PodWait(attempt + 1)
+		return c.PodWait(attempt + 1)
 	}
 
 	return target, nil

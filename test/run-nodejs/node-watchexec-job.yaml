@@ -1,0 +1,17 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: contain-test-run-nodejs
+spec:
+  template:
+    metadata:
+      labels:
+        turbokube.dev/contain-run: nodejs
+    spec:
+      containers:
+      - name: watch
+        image: ghcr.io/turbokube/node-watchexec:cd5bc017533efa2253bec4382e5fd03af1d9e8de
+      restartPolicy: Never
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 60
+  activeDeadlineSeconds: 3600

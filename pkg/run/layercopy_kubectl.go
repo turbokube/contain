@@ -2,6 +2,7 @@ package run
 
 import (
 	"bytes"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -24,8 +25,9 @@ func LayerToContainer(layer v1.Layer, target *SyncTarget) error {
 		"/",
 		"--no-same-owner",
 	}
-
+	addEnv := []string{}
 	copyCmd := exec.Command("kubectl", arg...)
+	copyCmd.Env = append(os.Environ(), addEnv...)
 	var outbuf, errbuf bytes.Buffer
 	copyCmd.Stdout = &outbuf
 	copyCmd.Stderr = &errbuf
