@@ -50,18 +50,6 @@ for F in $(find test -name skaffold.fail-\*.yaml); do
   echo "ok"
 done
 
-# sync tests
-# export KUBECONFIG=$(pwd)/test/kubeconfig
-# k3d cluster create turbokube-test-contain
-
-# image=$(yq e '.spec.template.spec.containers[0].image' test/run-nodejs/node-watchexec-job.yaml)
-# (cd test/run-nodejs/app/; contain -x -b $image -r turbokube.dev/contain-run=nodejs)
-
-# # # should fail due to base image mismatch
-# # contain -x -b docker.io/library/busybox -r turbokube.dev/contain-run=nodejs
-# # # watch, will block this script
-# # contain -x -b $image -r turbokube.dev/contain-run=nodejs -w
-
-# k3d cluster delete turbokube-test-contain
+./test-k8s.sh
 
 # $DOCKER stop $REGISTRY_NAME

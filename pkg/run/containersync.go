@@ -92,8 +92,8 @@ func (c *Containersync) PodWait(attempt int) (*SyncTarget, error) {
 
 	pods, err := PodInfo(c.config.Sync)
 	if err != nil {
-		// is there any get error category that warrants retry?
-		zap.L().Fatal("get candidate pods for sync", zap.Error(err))
+		zap.L().Error("get candidate pods for sync", zap.Error(err))
+		pods = []Runpod{} // reuse the retry logic below
 	}
 
 	var target *SyncTarget
