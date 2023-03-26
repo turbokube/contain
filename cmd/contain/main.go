@@ -18,15 +18,16 @@ import (
 )
 
 var (
-	BUILD       = "development"
-	helpStream  = os.Stderr
-	version     bool
-	help        bool
-	debug       bool
-	watch       bool
-	configPath  string
-	base        string
-	runSelector string
+	BUILD        = "development"
+	helpStream   = os.Stderr
+	version      bool
+	help         bool
+	debug        bool
+	watch        bool
+	configPath   string
+	base         string
+	runSelector  string
+	runNamespace string
 )
 
 func init() {
@@ -47,6 +48,11 @@ func init() {
 		"r",
 		"",
 		"append to running container instead of to base image, pod selector",
+	)
+	flag.StringVar(&runNamespace,
+		"n",
+		"",
+		"namespace for run, if empty current context is used",
 	)
 	flag.BoolVar(&watch,
 		"w",
@@ -217,15 +223,16 @@ func main() {
 	}
 
 	if runSelector != "" {
-		zap.L().Info("run!")
 		if len(config.Platforms) != 0 {
 			zap.L().Warn("platforms not supported for run")
 		}
-		sync, err := run.NewContainersync(c)
+		config.Sync = schema.TemplateSync(runNamespace, runSelector)
+		sync, err := run.NewContainersync(&config)
 		if err != nil {
 			zap.L().Fatal("containersync init", zap.Error(err))
 		}
 		sync.Run(layers...)
+		zap.L().Info("sync completed")
 		return
 	}
 
