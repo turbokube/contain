@@ -10,6 +10,7 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/turbokube/contain/pkg/contain"
 	"github.com/turbokube/contain/pkg/layers"
+	"github.com/turbokube/contain/pkg/run"
 	"github.com/turbokube/contain/pkg/schema"
 	schemav1 "github.com/turbokube/contain/pkg/schema/v1"
 	"go.uber.org/zap"
@@ -17,13 +18,15 @@ import (
 )
 
 var (
-	BUILD      = "development"
-	helpStream = os.Stderr
-	version    bool
-	help       bool
-	debug      bool
-	configPath string
-	base       string
+	BUILD       = "development"
+	helpStream  = os.Stderr
+	version     bool
+	help        bool
+	debug       bool
+	watch       bool
+	configPath  string
+	base        string
+	runSelector string
 )
 
 func init() {
@@ -39,6 +42,16 @@ func init() {
 		"b",
 		"",
 		"base image (implies tag = $IMAGE, local dir = $PWD, container path = /app)",
+	)
+	flag.StringVar(&runSelector,
+		"r",
+		"",
+		"append to running container instead of to base image, pod selector",
+	)
+	flag.BoolVar(&watch,
+		"w",
+		false,
+		"watch layers sources and trigger build/run on change",
 	)
 	flag.Usage = func() {
 		fmt.Fprintf(helpStream, "contain version: %s\n", BUILD)
@@ -72,6 +85,10 @@ func main() {
 	}
 
 	var err error
+
+	if watch {
+		zap.L().Fatal("watch not implemented")
+	}
 
 	workdir := flag.Arg(0)
 	if workdir != "" && workdir != "." && workdir != "./" {
@@ -167,6 +184,9 @@ func main() {
 	if config.Status.Overrides.Base {
 		aboutConfig = append(aboutConfig, zap.Bool("overriddenBase", true))
 	}
+	if workdir, err := os.Getwd(); err == nil {
+		aboutConfig = append(aboutConfig, zap.String("workdir", workdir))
+	}
 
 	zap.L().Info("config", aboutConfig...)
 
@@ -196,6 +216,22 @@ func main() {
 		layers[i] = layer
 	}
 
+	if runSelector != "" {
+		zap.L().Info("run!")
+		if len(config.Platforms) != 0 {
+			zap.L().Warn("platforms not supported for run")
+		}
+		sync, err := run.NewContainersync(c)
+		if err != nil {
+			zap.L().Fatal("containersync init", zap.Error(err))
+		}
+		sync.Run(layers...)
+		return
+	}
+
+	if config.Tag == "" {
+		zap.L().Error("append requires IMAGE env or config")
+	}
 	hash, err := c.Append(layers...)
 	if err != nil {
 		zap.L().Fatal("append", zap.Error(err))

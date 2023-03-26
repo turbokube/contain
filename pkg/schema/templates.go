@@ -18,14 +18,6 @@ func TagFromEnv() string {
 	return image
 }
 
-func TagFromEnvReuired() string {
-	image := TagFromEnv()
-	if image == "" {
-		zap.L().Error("this mode requires IMAGE env")
-	}
-	return image
-}
-
 func IgnoreDefault() []string {
 	return []string{
 		"*Dockerfile",
@@ -40,7 +32,7 @@ func TemplateApp(base string) v1.ContainConfig {
 			Template: true,
 		},
 		Base: base,
-		Tag:  TagFromEnvReuired(),
+		Tag:  TagFromEnv(),
 		Layers: []v1.Layer{
 			{
 				LocalDir: v1.LocalDir{
