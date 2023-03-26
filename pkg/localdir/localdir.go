@@ -19,7 +19,7 @@ type Dir struct {
 	ContainerPath PathMapper
 	Ignore        *patternmatcher.PatternMatcher
 	MaxFiles      int
-	MaxSize       int64
+	MaxSize       int
 }
 
 func NewPathMapperPrepend(prependDir string) PathMapper {
@@ -82,8 +82,8 @@ func FromFilesystem(dir Dir) (v1.Layer, error) {
 			return err
 		}
 		bytesTotal = bytesTotal + len(file)
-		if dir.MaxSize > 0 && bytesTotal > dir.MaxFiles {
-			return fmt.Errorf("accumulated file size exceeds max size from layer config: %d", dir.MaxSize)
+		if dir.MaxSize > 0 && bytesTotal > dir.MaxSize {
+			return fmt.Errorf("accumulated file size %d exceeds max size from layer config: %d", bytesTotal, dir.MaxSize)
 		}
 		topath := dir.ContainerPath(path)
 		filemap[topath] = file
@@ -97,7 +97,7 @@ func FromFilesystem(dir Dir) (v1.Layer, error) {
 	})
 
 	if err != nil {
-		zap.L().Error("layer buffer failed", zap.Int("files", len(filemap)), zap.Int("bytes", bytesTotal))
+		zap.L().Error("layer buffer failed", zap.Int("files", len(filemap)), zap.Int("bytes", bytesTotal), zap.Error(err))
 		return nil, err
 	}
 	zap.L().Info("layer buffer created", zap.Int("files", len(filemap)), zap.Int("bytes", bytesTotal))

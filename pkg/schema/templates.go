@@ -2,6 +2,7 @@ package schema
 
 import (
 	"os"
+	"time"
 
 	v1 "github.com/turbokube/contain/pkg/schema/v1"
 	"go.uber.org/zap"
@@ -14,14 +15,6 @@ func TagFromEnv() string {
 		zap.L().Debug("IMAGE env found", zap.String("value", image))
 	} else {
 		return ""
-	}
-	return image
-}
-
-func TagFromEnvReuired() string {
-	image := TagFromEnv()
-	if image == "" {
-		zap.L().Error("this mode requires IMAGE env")
 	}
 	return image
 }
@@ -40,7 +33,7 @@ func TemplateApp(base string) v1.ContainConfig {
 			Template: true,
 		},
 		Base: base,
-		Tag:  TagFromEnvReuired(),
+		Tag:  TagFromEnv(),
 		Layers: []v1.Layer{
 			{
 				LocalDir: v1.LocalDir{
@@ -52,5 +45,18 @@ func TemplateApp(base string) v1.ContainConfig {
 				},
 			},
 		},
+	}
+}
+
+func TemplateSync(runNamespace string, runSelector string) v1.ContainConfigSync {
+	defaultWait, err := time.ParseDuration("3s")
+	if err != nil {
+		zap.L().Fatal("parse default duration", zap.Error(err))
+	}
+	return v1.ContainConfigSync{
+		Namespace:       runNamespace,
+		PodSelector:     runSelector,
+		GetAttemptsMax:  10,
+		GetAttemptsWait: defaultWait,
 	}
 }

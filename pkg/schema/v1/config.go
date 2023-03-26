@@ -1,5 +1,7 @@
 package v1
 
+import "time"
+
 type ContainConfig struct {
 	Status ContainConfigStatus
 	// Base is the base image reference
@@ -8,6 +10,7 @@ type ContainConfig struct {
 	Tag       string   `yaml:"tag"`
 	Platforms []string `yaml:"platforms"`
 	Layers    []Layer  `yaml:"layers,omitempty"`
+	Sync      ContainConfigSync
 }
 
 type ContainConfigStatus struct {
@@ -19,6 +22,13 @@ type ContainConfigStatus struct {
 
 type ContainConfigOverrides struct {
 	Base bool
+}
+
+type ContainConfigSync struct {
+	PodSelector     string
+	Namespace       string
+	GetAttemptsMax  int
+	GetAttemptsWait time.Duration
 }
 
 type Layer struct {
