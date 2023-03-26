@@ -30,9 +30,34 @@ type RunpodStatus struct {
 	ContainerStatuses []RunpodContainerStatus `json:"containerStatuses"`
 }
 
+type RunpodContainerStatusState struct {
+	Waiting    RunpodContainerStatusStateWaiting    `json:"waiting"`
+	Running    RunpodContainerStatusStateRunning    `json:"running"`
+	Terminated RunpodContainerStatusStateTerminated `json:"terminated"`
+}
+
+type RunpodContainerStatusStateWaiting struct {
+	Reason string `json:"reason"`
+}
+
+type RunpodContainerStatusStateRunning struct {
+	StartedAt string `json:"startedAt"`
+}
+
+type RunpodContainerStatusStateTerminated struct {
+	ExitCode   int    `json:"exitCode"`
+	FinishedAt string `json:"finishedAt"`
+	Reason     string `json:"reason"` // for example "Completed"
+	StartedAt  string `json:"startedAt"`
+}
+
 type RunpodContainerStatus struct {
-	Name  string `json:"name"`
-	Image string `json:"image"`
+	Name         string                     `json:"name"`
+	Image        string                     `json:"image"`
+	Ready        bool                       `json:"ready"`
+	RestartCount int                        `json:"restartCount"`
+	Started      bool                       `json:"started"`
+	State        RunpodContainerStatusState `json:"state"`
 }
 
 func PodInfo(config schema.ContainConfigSync) ([]Runpod, error) {

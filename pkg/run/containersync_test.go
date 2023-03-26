@@ -23,12 +23,24 @@ func TestMatchPod(t *testing.T) {
 		t.Fail()
 	}
 
+	stateRunning := run.RunpodContainerStatusState{
+		Running: run.RunpodContainerStatusStateRunning{
+			StartedAt: "2023-03-26T08:51:14Z",
+		},
+	}
+	stateWaiting := run.RunpodContainerStatusState{
+		Waiting: run.RunpodContainerStatusStateWaiting{
+			Reason: "ContainerCreating",
+		},
+	}
+
 	if sync.MatchPod(run.Runpod{
 		Status: run.RunpodStatus{
-			Phase: "Succeeded",
+			Phase: "Pending",
 			ContainerStatuses: []run.RunpodContainerStatus{
 				{
-					Image: "busybox",
+					Image: "busybox:1",
+					State: stateWaiting,
 				},
 			},
 		},
@@ -41,7 +53,36 @@ func TestMatchPod(t *testing.T) {
 			Phase: "Running",
 			ContainerStatuses: []run.RunpodContainerStatus{
 				{
-					Image: "alpine",
+					Image: "busybox:1",
+					State: stateRunning,
+				},
+			},
+		},
+	}) == nil {
+		t.Errorf("Should accept running")
+	}
+
+	if sync.MatchPod(run.Runpod{
+		Status: run.RunpodStatus{
+			Phase: "Succeeded",
+			ContainerStatuses: []run.RunpodContainerStatus{
+				{
+					Image: "busybox:1",
+					State: stateRunning,
+				},
+			},
+		},
+	}) != nil {
+		t.Errorf("Should disregard container status if pod phase isn't Running")
+	}
+
+	if sync.MatchPod(run.Runpod{
+		Status: run.RunpodStatus{
+			Phase: "Running",
+			ContainerStatuses: []run.RunpodContainerStatus{
+				{
+					Image: "alpine:1",
+					State: stateRunning,
 				},
 			},
 		},
@@ -49,16 +90,18 @@ func TestMatchPod(t *testing.T) {
 		t.Errorf("should reject mismatching base image")
 	}
 
-	matchContainerExact := sync.MatchPod(run.Runpod{
+	exact := run.Runpod{
 		Status: run.RunpodStatus{
 			Phase: "Running",
 			ContainerStatuses: []run.RunpodContainerStatus{
 				{
 					Image: "busybox:1",
+					State: stateRunning,
 				},
 			},
 		},
-	})
+	}
+	matchContainerExact := sync.MatchPod(exact)
 	if matchContainerExact == nil {
 		t.Errorf("should accept running + container running base image")
 	}
@@ -69,6 +112,7 @@ func TestMatchPod(t *testing.T) {
 			ContainerStatuses: []run.RunpodContainerStatus{
 				{
 					Image: "busybox:1@sha256:b5d6fe0712636ceb7430189de28819e195e8966372edfc2d9409d79402a0dc16",
+					State: stateRunning,
 				},
 			},
 		},
@@ -83,6 +127,7 @@ func TestMatchPod(t *testing.T) {
 			ContainerStatuses: []run.RunpodContainerStatus{
 				{
 					Image: "busybox@sha256:b5d6fe0712636ceb7430189de28819e195e8966372edfc2d9409d79402a0dc16",
+					State: stateRunning,
 				},
 			},
 		},
@@ -96,6 +141,7 @@ func TestMatchPod(t *testing.T) {
 			ContainerStatuses: []run.RunpodContainerStatus{
 				{
 					Image: "busybox:1.36",
+					State: stateRunning,
 				},
 			},
 		},
@@ -110,9 +156,11 @@ func TestMatchPod(t *testing.T) {
 			ContainerStatuses: []run.RunpodContainerStatus{
 				{
 					Image: "busybox:1.35",
+					State: stateRunning,
 				},
 				{
 					Image: "busybox:1.36",
+					State: stateRunning,
 				},
 			},
 		},

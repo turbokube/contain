@@ -8,6 +8,7 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	schema "github.com/turbokube/contain/pkg/schema/v1"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type Containersync struct {
@@ -59,22 +60,35 @@ func (c *Containersync) Run(layers ...v1.Layer) error {
 // MatchPod assumes that a selector was applied at get,
 // and matches on pod status if the pod is a suitable sync target or not
 func (c *Containersync) MatchPod(pod Runpod) *RunpodContainerStatus {
+	fields := []zapcore.Field{
+		zap.String("n", pod.Metadata.Namespace),
+		zap.String("name", pod.Metadata.Name),
+		zap.String("phase", pod.Status.Phase),
+	}
 	if pod.Status.Phase != "Running" {
-		zap.L().Debug("not running",
-			zap.String("n", pod.Metadata.Namespace),
-			zap.String("name", pod.Metadata.Name),
-			zap.String("phase", pod.Status.Phase),
-		)
+		zap.L().Debug("pod not running", fields...)
+		// if we find a state where we want to sync to the container anyway we can remove this return
+		return nil
 	}
 	var container *RunpodContainerStatus
 	for i, cs := range pod.Status.ContainerStatuses {
 		if strings.HasPrefix(cs.Image, c.config.Base) {
-			zap.L().Debug("container match",
-				zap.String("n", pod.Metadata.Namespace),
-				zap.String("name", pod.Metadata.Name),
-				zap.String("container", cs.Name),
-				zap.Int("i", i),
+			cfields := append(fields,
+				zap.String(fmt.Sprintf("container%dname", i), cs.Name),
+				zap.Bool("started", cs.Started),
+				zap.Bool("ready", cs.Ready),
 			)
+			if cs.State.Waiting.Reason != "" {
+				cfields = append(cfields, zap.String("waiting", cs.State.Waiting.Reason))
+				zap.L().Debug("container not running", cfields...)
+				return nil
+			} else if cs.State.Running.StartedAt != "" {
+				cfields = append(cfields, zap.String("since", cs.State.Running.StartedAt))
+			} else {
+				zap.L().Error("unrecognized container state", cfields...)
+				return nil
+			}
+			zap.L().Debug("container match", cfields...)
 			if container != nil {
 				zap.L().Error("multiple containers match", zap.String("previous", container.Name))
 				return nil
