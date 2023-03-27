@@ -43,15 +43,15 @@ type ParentPackage struct {
 }
 
 type BinPackage struct {
-	Name        string     `json:"name"`
-	Version     string     `json:"version"`
-	Description string     `json:"description,omitempty"`
-	Homepage    string     `json:"homepage,omitempty"`
-	Repository  string     `json:"repository,omitempty"`
-	Licence     string     `json:"license,omitempty"`
-	Bin         ContainBin `json:"bin"`
-	Os          []OS       `json:"os"`
-	Cpu         []CPU      `json:"cpu"`
+	Name        string            `json:"name"`
+	Version     string            `json:"version"`
+	Description string            `json:"description,omitempty"`
+	Homepage    string            `json:"homepage,omitempty"`
+	Repository  string            `json:"repository,omitempty"`
+	Licence     string            `json:"license,omitempty"`
+	Bin         map[string]string `json:"bin"`
+	Os          []OS              `json:"os"`
+	Cpu         []CPU             `json:"cpu"`
 }
 
 const (
@@ -194,21 +194,23 @@ func main() {
 			zap.L().Debug("ignore", zap.String("name", *asset.Name))
 			continue
 		}
-		// binname := match[0]
-		binname := "contain"
 		version := match[1]
 		o := NewOs(match[2])
 		cpu := NewCPU(match[3])
+		exename := "contain"
+		binname := fmt.Sprintf("%s-%s-%s", exename, o.String(), cpu.String())
 		if o.String() == "win32" {
+			exename = fmt.Sprintf("%s.exe", exename)
 			binname = fmt.Sprintf("%s.exe", binname)
 		}
+
 		p := BinPackage{
 			Name:        fmt.Sprintf("@turbokube/contain-%s-%s", o, cpu),
 			Version:     version,
 			Homepage:    parent.Homepage,
 			Description: fmt.Sprintf("Platform specific (%s-%s) binary package for %s", o, cpu, parent.Name),
-			Bin: ContainBin{
-				Contain: fmt.Sprintf("bin/%s", binname),
+			Bin: map[string]string{
+				binname: fmt.Sprintf("bin/%s", exename),
 			},
 			Licence: parent.Licence,
 			Os:      []OS{o},
@@ -235,7 +237,7 @@ func main() {
 		if err := ioutil.WriteFile(path.Join(dir, "package.json"), j, 0644); err != nil {
 			zap.L().Fatal("write package.json", zap.Error(err))
 		}
-		bin := path.Join(dir, p.Bin.Contain)
+		bin := path.Join(dir, p.Bin[binname])
 		out, err := os.Create(bin)
 		if err != nil {
 			zap.L().Fatal("create download target", zap.String("path", bin), zap.Error(err))

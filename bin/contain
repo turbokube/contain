@@ -3,15 +3,15 @@ const { platform, arch } = process;
 
 const PLATFORMS = {
   win32: {
-    x64: "@turbokube/contain-win32-x64/contain.exe",
+    x64: "@turbokube/contain-win32-x64/bin/contain.exe",
   },
   darwin: {
-    x64: "@turbokube/contain-darwin-x64/contain",
-    arm64: "@turbokube/contain-darwin-arm64/contain",
+    x64: "@turbokube/contain-darwin-x64/bin/contain",
+    arm64: "@turbokube/contain-darwin-arm64/bin/contain",
   },
   linux: {
-    x64: "@turbokube/contain-linux-x64/contain",
-    arm64: "@turbokube/contain-linux-arm64/contain",
+    x64: "@turbokube/contain-linux-x64/bin/contain",
+    arm64: "@turbokube/contain-linux-arm64/bin/contain",
   },
 };
 
