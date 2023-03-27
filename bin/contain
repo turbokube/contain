@@ -1,0 +1,33 @@
+#!/usr/bin/env node
+const { platform, arch } = process;
+
+const PLATFORMS = {
+  win32: {
+    x64: "@turbokube/contain-win32-x64/contain.exe",
+  },
+  darwin: {
+    x64: "@turbokube/contain-darwin-x64/contain",
+    arm64: "@turbokube/contain-darwin-arm64/contain",
+  },
+  linux: {
+    x64: "@turbokube/contain-linux-x64/contain",
+    arm64: "@turbokube/contain-linux-arm64/contain",
+  },
+};
+
+const binPath = PLATFORMS?.[platform]?.[arch];
+if (binPath) {
+  const result = require("child_process").spawnSync(
+    require.resolve(binPath),
+    process.argv.slice(2),
+    { shell: false, stdio: "inherit" },
+  );
+  if (result.error) throw result.error;
+  process.exitCode = result.status;
+} else {
+  console.error(
+    "The contain CLI package doesn't ship with prebuilt binaries for your platform",
+    platform, arch
+  );
+  process.exitCode = 1;
+}

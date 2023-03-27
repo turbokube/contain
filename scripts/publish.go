@@ -194,10 +194,14 @@ func main() {
 			zap.L().Debug("ignore", zap.String("name", *asset.Name))
 			continue
 		}
-		binname := match[0]
+		// binname := match[0]
+		binname := "contain"
 		version := match[1]
 		o := NewOs(match[2])
 		cpu := NewCPU(match[3])
+		if o.String() == "win32" {
+			binname = fmt.Sprintf("%s.exe", binname)
+		}
 		p := BinPackage{
 			Name:        fmt.Sprintf("@turbokube/contain-%s-%s", o, cpu),
 			Version:     version,

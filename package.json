@@ -2,7 +2,9 @@
   "name": "@turbokube/contain",
   "version": "0.2.6",
   "description": "Simple declarative container builds from local artifacts",
-  "main": "bin/main.js",
+  "bin": {
+    "contain": "bin/contain"
+  },
   "directories": {
     "test": "test"
   },
