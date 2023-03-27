@@ -33,7 +33,7 @@ type OS int
 type CPU int
 
 type ContainBin struct {
-	Contain string `json:"bin"`
+	Contain string `json:"contain"`
 }
 
 type ParentPackage struct {
