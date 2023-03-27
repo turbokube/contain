@@ -38,6 +38,7 @@ func LayerToContainer(layer v1.Layer, target *SyncTarget) error {
 		return err
 	}
 
+	zap.L().Debug("kubectl", zap.Strings("cli", arg))
 	runErr := copyCmd.Run()
 	if runErr != nil {
 		zap.L().Error("kubectl",

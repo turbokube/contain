@@ -80,6 +80,7 @@ func PodInfo(config schema.ContainConfigSync) ([]Runpod, error) {
 	cmd.Stdout = &outbuf
 	cmd.Stderr = &errbuf
 
+	zap.L().Debug("kubectl", zap.Strings("cli", arg))
 	runErr := cmd.Run()
 	if runErr != nil {
 		zap.L().Error("kubectl",

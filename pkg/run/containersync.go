@@ -73,6 +73,7 @@ func (c *Containersync) MatchPod(pod Runpod) *RunpodContainerStatus {
 		return nil
 	}
 	var container *RunpodContainerStatus
+	imageMismatches := []string{}
 	for i, cs := range pod.Status.ContainerStatuses {
 		if strings.HasPrefix(cs.Image, c.config.Base) {
 			cfields := append(fields,
@@ -96,6 +97,15 @@ func (c *Containersync) MatchPod(pod Runpod) *RunpodContainerStatus {
 				return nil
 			}
 			container = &cs
+		} else {
+			imageMismatches = append(imageMismatches, cs.Image)
+		}
+	}
+	if container == nil {
+		if len(imageMismatches) == 0 {
+			zap.L().Error("zero container images found", zap.String("phase", pod.Status.Phase))
+		} else {
+			zap.L().Debug("no running images matched", zap.String("base", c.config.Base), zap.Strings("found", imageMismatches))
 		}
 	}
 	return container
@@ -111,6 +121,7 @@ func (c *Containersync) PodWait(attempt int) (*SyncTarget, error) {
 		zap.L().Error("get candidate pods for sync", zap.Error(err))
 		pods = []Runpod{} // reuse the retry logic below
 	}
+	zap.L().Debug("pods", zap.String("selector", c.config.Sync.PodSelector), zap.Int("matched", len(pods)))
 
 	var target *SyncTarget
 	for _, pod := range pods {

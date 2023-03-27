@@ -236,7 +236,7 @@ func main() {
 			zap.L().Fatal("containersync run", zap.Error(err))
 		}
 		zap.L().Info("containersync completed")
-		fmt.Printf(`{"namespace":"%s","pod":"%s",container="%s"}%s`, target.Pod.Namespace, target.Pod.Name, target.Container.Name, "\n")
+		fmt.Printf(`{"namespace":"%s","pod":"%s",container:"%s"}%s`, target.Pod.Namespace, target.Pod.Name, target.Container.Name, "\n")
 		return
 	}
 
