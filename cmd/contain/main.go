@@ -231,8 +231,12 @@ func main() {
 		if err != nil {
 			zap.L().Fatal("containersync init", zap.Error(err))
 		}
-		sync.Run(layers...)
-		zap.L().Info("sync completed")
+		target, err := sync.Run(layers...)
+		if err != nil {
+			zap.L().Fatal("containersync run", zap.Error(err))
+		}
+		zap.L().Info("containersync completed")
+		fmt.Printf(`{"namespace":"%s","pod":"%s",container="%s"}%s`, target.Pod.Namespace, target.Pod.Name, target.Container.Name, "\n")
 		return
 	}
 

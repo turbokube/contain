@@ -13,9 +13,9 @@ import (
 func LayerToContainer(layer v1.Layer, target *SyncTarget) error {
 	// https://github.com/GoogleContainerTools/skaffold/blob/v2.2.0/pkg/skaffold/sync/kubectl.go#L49
 	arg := []string{
-		"exec", target.pod.Name,
-		"--namespace", target.pod.Namespace,
-		"-c", target.container.Name,
+		"exec", target.Pod.Name,
+		"--namespace", target.Pod.Namespace,
+		"-c", target.Container.Name,
 		"-i",
 		"--",
 		"tar",

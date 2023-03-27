@@ -56,7 +56,7 @@ func TemplateSync(runNamespace string, runSelector string) v1.ContainConfigSync 
 	return v1.ContainConfigSync{
 		Namespace:       runNamespace,
 		PodSelector:     runSelector,
-		GetAttemptsMax:  10,
+		GetAttemptsMax:  20,
 		GetAttemptsWait: defaultWait,
 	}
 }

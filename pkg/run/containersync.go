@@ -16,8 +16,8 @@ type Containersync struct {
 }
 
 type SyncTarget struct {
-	pod       RunpodMetadata
-	container RunpodContainerStatus
+	Pod       RunpodMetadata
+	Container RunpodContainerStatus
 }
 
 func NewContainersync(config *schema.ContainConfig) (*Containersync, error) {
@@ -26,35 +26,37 @@ func NewContainersync(config *schema.ContainConfig) (*Containersync, error) {
 	}, nil
 }
 
-func (c *Containersync) Run(layers ...v1.Layer) error {
+func (c *Containersync) Run(layers ...v1.Layer) (*SyncTarget, error) {
 	if len(layers) != 1 {
-		return fmt.Errorf("only single layer sync is supported at the momemnt, got %d", len(layers))
+		return nil, fmt.Errorf("only single layer sync is supported at the momemnt, got %d", len(layers))
 	}
 	target, err := c.PodWait(1)
 	if err != nil {
-		zap.L().Fatal("failed to get sync target pod",
+		zap.L().Error("failed to get sync target pod",
 			zap.Error(err),
 			zap.String("namespace", c.config.Sync.Namespace),
 			zap.String("selector", c.config.Sync.PodSelector),
 			zap.String("base", c.config.Base),
 		)
+		return nil, fmt.Errorf("sync target not found")
 	}
 	zap.L().Info("sync pod",
-		zap.String("namespace", target.pod.Namespace),
-		zap.String("name", target.pod.Name),
-		zap.String("created", target.pod.CreatedTimestamp),
-		zap.String("container", target.container.Name),
-		zap.String("image", target.container.Image),
+		zap.String("namespace", target.Pod.Namespace),
+		zap.String("name", target.Pod.Name),
+		zap.String("created", target.Pod.CreatedTimestamp),
+		zap.String("container", target.Container.Name),
+		zap.String("image", target.Container.Image),
 	)
 
 	for i, layer := range layers {
 		zap.L().Debug("start sync", zap.Int("layer", i))
 		if err := LayerToContainer(layer, target); err != nil {
-			zap.L().Fatal("sync failed", zap.Int("layer", i))
+			zap.L().Error("sync failed", zap.Int("layer", i))
+			return nil, err
 		}
 	}
 
-	return nil
+	return target, nil
 }
 
 // MatchPod assumes that a selector was applied at get,
@@ -115,11 +117,11 @@ func (c *Containersync) PodWait(attempt int) (*SyncTarget, error) {
 		container := c.MatchPod(pod)
 		if container != nil {
 			if target != nil {
-				return nil, fmt.Errorf("more than one target pod: %s and %s", target.pod.Name, pod.Metadata.Name)
+				return nil, fmt.Errorf("more than one target pod: %s and %s", target.Pod.Name, pod.Metadata.Name)
 			}
 			target = &SyncTarget{
-				pod:       pod.Metadata,
-				container: *container,
+				Pod:       pod.Metadata,
+				Container: *container,
 			}
 		}
 	}
@@ -127,6 +129,7 @@ func (c *Containersync) PodWait(attempt int) (*SyncTarget, error) {
 	if target == nil {
 		zap.L().Info("no matching target pod",
 			zap.Int("retry", attempt),
+			zap.Int("max", c.config.Sync.GetAttemptsMax),
 			zap.Duration("wait", c.config.Sync.GetAttemptsWait),
 		)
 		time.Sleep(c.config.Sync.GetAttemptsWait)
