@@ -194,6 +194,7 @@ func main() {
 			zap.L().Debug("ignore", zap.String("name", *asset.Name))
 			continue
 		}
+		binname := match[0]
 		version := match[1]
 		o := NewOs(match[2])
 		cpu := NewCPU(match[3])
@@ -203,7 +204,7 @@ func main() {
 			Homepage:    parent.Homepage,
 			Description: fmt.Sprintf("Platform specific (%s-%s) binary package for %s", o, cpu, parent.Name),
 			Bin: ContainBin{
-				Contain: match[0],
+				Contain: fmt.Sprintf("bin/%s", binname),
 			},
 			Licence: parent.Licence,
 			Os:      []OS{o},
@@ -230,7 +231,7 @@ func main() {
 		if err := ioutil.WriteFile(path.Join(dir, "package.json"), j, 0644); err != nil {
 			zap.L().Fatal("write package.json", zap.Error(err))
 		}
-		bin := path.Join(bindir, p.Bin.Contain)
+		bin := path.Join(dir, p.Bin.Contain)
 		out, err := os.Create(bin)
 		if err != nil {
 			zap.L().Fatal("create download target", zap.String("path", bin), zap.Error(err))
