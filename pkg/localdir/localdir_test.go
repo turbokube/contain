@@ -69,4 +69,9 @@ func TestFromFilesystemDir1(t *testing.T) {
 	if result != nil {
 		t.Errorf("Expected no result when there's an error")
 	}
+
+	expectDigest(localdir.Dir{
+		Path: "./testdata/dir2",
+	}, "sha256:a7466234676e9d24fe2f8dc6d08e1b7ed1f5c17151e2d62687275f1d76cf3c68", t)
+
 }
