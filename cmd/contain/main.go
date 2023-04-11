@@ -241,7 +241,7 @@ func main() {
 	}
 
 	if config.Tag == "" {
-		zap.L().Error("append requires IMAGE env or config")
+		zap.L().Fatal("append requires IMAGE env or config")
 	}
 	hash, err := c.Append(layers...)
 	if err != nil {
