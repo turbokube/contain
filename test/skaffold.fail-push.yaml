@@ -1,0 +1,15 @@
+apiVersion: skaffold/v3
+kind: Config
+build:
+  artifacts:
+  - image: example.com/noimagerepo/failtest-push-to-invalid-repo
+    context: ./test
+    custom:
+      buildCommand: |-
+        cat <<EOF | contain -x -c -
+        base: busybox
+        layers:
+        - localDir:
+            path: localdir1
+            containerPath: /app
+        EOF

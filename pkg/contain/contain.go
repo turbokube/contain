@@ -149,6 +149,7 @@ func (c *Contain) Append(layers ...v1.Layer) (v1.Hash, error) {
 	imgDigest, err := img.Digest()
 	if err != nil {
 		zap.L().Error("Failed to get result image digest", zap.Error(err))
+		return noresult, err
 	}
 	err = c.push(img)
 	if err != nil {
@@ -187,7 +188,7 @@ func (c *Contain) push(image v1.Image) error {
 	}
 
 	progressChan := make(chan v1.Update, 200)
-	errChan := make(chan error, 1)
+	errChan := make(chan error, 2)
 
 	go func() {
 		options := append(c.craneOptions.Remote, remote.WithProgress(progressChan))
@@ -203,7 +204,9 @@ func (c *Contain) push(image v1.Image) error {
 
 	for update := range progressChan {
 		if update.Error != nil {
-			return err
+			logger.Error("push update", zap.Error(update.Error))
+			errChan <- update.Error
+			break
 		}
 
 		if update.Complete == update.Total {
@@ -213,10 +216,6 @@ func (c *Contain) push(image v1.Image) error {
 				nextProgress = time.Now().Add(debounce)
 				logger.Info("push", zap.Int64("completed", update.Complete), zap.Int64("total", update.Total))
 			}
-		}
-
-		if err != nil {
-			return err
 		}
 	}
 
