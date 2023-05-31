@@ -10,7 +10,7 @@ spec:
     spec:
       containers:
       - name: watch
-        image: ghcr.io/turbokube/node-watchexec:cd5bc017533efa2253bec4382e5fd03af1d9e8de
+        image: ghcr.io/turbokube/nodejs-watch:533ced15db31f01f901f98b2dbbc909d3c50b1a5
       restartPolicy: Never
   backoffLimit: 3
   ttlSecondsAfterFinished: 60
