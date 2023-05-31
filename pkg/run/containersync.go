@@ -11,8 +11,13 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+type MatchContainer struct {
+	imagePrefix string
+}
+
 type Containersync struct {
-	config *schema.ContainConfig
+	config         *schema.ContainConfig
+	matchContainer *MatchContainer
 }
 
 type SyncTarget struct {
@@ -23,6 +28,9 @@ type SyncTarget struct {
 func NewContainersync(config *schema.ContainConfig) (*Containersync, error) {
 	return &Containersync{
 		config: config,
+		matchContainer: &MatchContainer{
+			imagePrefix: config.Base,
+		},
 	}, nil
 }
 
@@ -36,7 +44,7 @@ func (c *Containersync) Run(layers ...v1.Layer) (*SyncTarget, error) {
 			zap.Error(err),
 			zap.String("namespace", c.config.Sync.Namespace),
 			zap.String("selector", c.config.Sync.PodSelector),
-			zap.String("base", c.config.Base),
+			zap.String("match", c.matchContainer.imagePrefix),
 		)
 		return nil, fmt.Errorf("sync target not found")
 	}
@@ -75,7 +83,7 @@ func (c *Containersync) MatchPod(pod Runpod) *RunpodContainerStatus {
 	var container *RunpodContainerStatus
 	imageMismatches := []string{}
 	for i, cs := range pod.Status.ContainerStatuses {
-		if strings.HasPrefix(cs.Image, c.config.Base) {
+		if strings.HasPrefix(cs.Image, c.matchContainer.imagePrefix) {
 			cfields := append(fields,
 				zap.String(fmt.Sprintf("container%dname", i), cs.Name),
 				zap.Bool("started", cs.Started),
@@ -105,7 +113,7 @@ func (c *Containersync) MatchPod(pod Runpod) *RunpodContainerStatus {
 		if len(imageMismatches) == 0 {
 			zap.L().Error("zero container images found", zap.String("phase", pod.Status.Phase))
 		} else {
-			zap.L().Debug("no running images matched", zap.String("base", c.config.Base), zap.Strings("found", imageMismatches))
+			zap.L().Debug("no running images matched", zap.String("prefix", c.matchContainer.imagePrefix), zap.Strings("found", imageMismatches))
 		}
 	}
 	return container
@@ -138,11 +146,18 @@ func (c *Containersync) PodWait(attempt int) (*SyncTarget, error) {
 	}
 
 	if target == nil {
-		zap.L().Info("no matching target pod",
+		info := []zapcore.Field{
 			zap.Int("retry", attempt),
 			zap.Int("max", c.config.Sync.GetAttemptsMax),
 			zap.Duration("wait", c.config.Sync.GetAttemptsWait),
-		)
+		}
+		if attempt == 3 {
+			info = append(info,
+				zap.String("selector", c.config.Sync.PodSelector),
+				zap.String("imagePrefix", c.matchContainer.imagePrefix),
+			)
+		}
+		zap.L().Info("no matching target pod", info...)
 		time.Sleep(c.config.Sync.GetAttemptsWait)
 		return c.PodWait(attempt + 1)
 	}
