@@ -104,7 +104,8 @@ func (c *Containersync) MatchPod(pod Runpod) *RunpodContainerStatus {
 				zap.L().Error("multiple containers match", zap.String("previous", container.Name))
 				return nil
 			}
-			container = &cs
+			avoidForLoopReuse := cs
+			container = &avoidForLoopReuse
 		} else {
 			imageMismatches = append(imageMismatches, cs.Image)
 		}

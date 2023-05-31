@@ -168,4 +168,27 @@ func TestMatchPod(t *testing.T) {
 		t.Errorf("should reject multiple containers match the base")
 	}
 
+	matchContainer2 := sync.MatchPod(run.Runpod{
+		Status: run.RunpodStatus{
+			Phase: "Running",
+			ContainerStatuses: []run.RunpodContainerStatus{
+				{
+					Image: "idlybox:1.35",
+					State: stateRunning,
+				},
+				{
+					Image: "busybox:1.35",
+					State: stateRunning,
+				},
+				{
+					Image: "lazybox:1.35",
+					State: stateRunning,
+				},
+			},
+		},
+	})
+	if matchContainer2.Image != "busybox:1.35" {
+		t.Errorf("should return the matching container among many, got %s", matchContainer2.Image)
+	}
+
 }
