@@ -70,6 +70,10 @@ build:
         2> ../example-stderr.out;
         echo "------ stdout ------"; cat ../example-stdout.out;
         echo "------ stderr ------"; cat ../example-stderr.out;
+  - image: filemode
+    context: ./test
+    custom:
+      buildCommand: contain -x -c filemode.contain.yaml
 
 test:
 - image: localdir1
@@ -99,3 +103,6 @@ test:
 - image: config-stdin
   structureTests:
   - ./test/config-override-test.yaml
+- image: filemode
+  structureTests:
+  - ./test/filemode.test.yaml

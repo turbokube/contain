@@ -6,6 +6,7 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/moby/patternmatcher"
 	"github.com/turbokube/contain/pkg/localdir"
+	schema "github.com/turbokube/contain/pkg/schema/v1"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 )
@@ -15,7 +16,16 @@ func debug(layer v1.Layer, t *testing.T) {
 }
 
 func expectDigest(input localdir.Dir, digest string, t *testing.T) {
-	result, err := localdir.FromFilesystem(input)
+	expectDigestWithAttributes(schema.LayerAttributes{}, input, digest, t)
+}
+
+func expectDigestWithAttributes(
+	a schema.LayerAttributes,
+	input localdir.Dir,
+	digest string,
+	t *testing.T,
+) {
+	result, err := localdir.FromFilesystem(input, a)
 	if err != nil {
 		t.Error(err)
 	}
@@ -62,7 +72,7 @@ func TestFromFilesystemDir1(t *testing.T) {
 		Path:          "./testdata/dir1",
 		ContainerPath: localdir.NewPathMapperPrepend("/app"),
 		Ignore:        ignoreAll,
-	})
+	}, schema.LayerAttributes{})
 	if err == nil {
 		t.Errorf("Expected failure for localDir layer with no files")
 	}
@@ -73,5 +83,17 @@ func TestFromFilesystemDir1(t *testing.T) {
 	expectDigest(localdir.Dir{
 		Path: "./testdata/dir2",
 	}, "sha256:a7466234676e9d24fe2f8dc6d08e1b7ed1f5c17151e2d62687275f1d76cf3c68", t)
+
+	expectDigestWithAttributes(schema.LayerAttributes{FileMode: 0755}, localdir.Dir{
+		Path: "./testdata/dir2",
+	}, "sha256:20ca46c26fe5c9d7a81cd2509e9e9e0ca4cfd639940b9fe82c9bdc113a5bbaa0", t)
+
+	expectDigestWithAttributes(schema.LayerAttributes{Uid: 65532}, localdir.Dir{
+		Path: "./testdata/dir2",
+	}, "sha256:cf729c44714cc4528d6f70f67cbe82358f55966a2168084149a94b00598b2b89", t)
+
+	expectDigestWithAttributes(schema.LayerAttributes{Gid: 65534}, localdir.Dir{
+		Path: "./testdata/dir2",
+	}, "sha256:b9ef15618528091f7ead6945df474d60cb2930c22abac1267a6759d8e6d68e70", t)
 
 }
