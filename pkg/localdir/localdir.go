@@ -9,6 +9,7 @@ import (
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/moby/patternmatcher"
+	schema "github.com/turbokube/contain/pkg/schema/v1"
 	"go.uber.org/zap"
 )
 
@@ -40,7 +41,7 @@ func NewPathMapperAsIs() PathMapper {
 	}
 }
 
-func FromFilesystem(dir Dir) (v1.Layer, error) {
+func FromFilesystem(dir Dir, attributes schema.LayerAttributes) (v1.Layer, error) {
 
 	if dir.Path == "" {
 		return nil, fmt.Errorf("localDir must be specified (use . for CWD)")
@@ -106,6 +107,6 @@ func FromFilesystem(dir Dir) (v1.Layer, error) {
 		return nil, fmt.Errorf("dir resulted in empty layer: %v", dir)
 	}
 
-	return Layer(filemap)
+	return Layer(filemap, attributes)
 
 }

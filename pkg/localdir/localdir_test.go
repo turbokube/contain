@@ -6,6 +6,7 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/moby/patternmatcher"
 	"github.com/turbokube/contain/pkg/localdir"
+	schema "github.com/turbokube/contain/pkg/schema/v1"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 )
@@ -15,7 +16,7 @@ func debug(layer v1.Layer, t *testing.T) {
 }
 
 func expectDigest(input localdir.Dir, digest string, t *testing.T) {
-	result, err := localdir.FromFilesystem(input)
+	result, err := localdir.FromFilesystem(input, schema.LayerAttributes{})
 	if err != nil {
 		t.Error(err)
 	}
@@ -62,7 +63,7 @@ func TestFromFilesystemDir1(t *testing.T) {
 		Path:          "./testdata/dir1",
 		ContainerPath: localdir.NewPathMapperPrepend("/app"),
 		Ignore:        ignoreAll,
-	})
+	}, schema.LayerAttributes{})
 	if err == nil {
 		t.Errorf("Expected failure for localDir layer with no files")
 	}

@@ -32,6 +32,12 @@ type ContainConfigSync struct {
 }
 
 type Layer struct {
+	Attributes LayerAttributes `yaml:"layerAttributes,omitempty"`
+	// exactly one of the following
+	LocalDir LocalDir `yaml:"localDir,omitempty"`
+}
+
+type LayerAttributes struct {
 	// generic, supported for applicable layer types
 	Uid uint16 `yaml:"uid,omitempty"`
 	Gid uint16 `yaml:"gid,omitempty"`
@@ -39,9 +45,6 @@ type Layer struct {
 	// Mode bits to use on files, must be a value between 0 and 0777.
 	// YAML accepts both octal and decimal values, JSON requires decimal values for mode bits.
 	FileMode int32 `yaml:"fileMode,omitempty"`
-
-	// exactly one of the following
-	LocalDir LocalDir `yaml:"localDir,omitempty"`
 }
 
 // LocalDir is a directory structure that should be appended as-is to base

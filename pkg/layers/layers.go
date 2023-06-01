@@ -16,12 +16,12 @@ func NewLayerBuilder(cfg schema.Layer) (LayerBuilder, error) {
 	// TODO can we check that only one option is set
 	// (this concept is modelled on skaffold's "build:" config)
 	if cfg.LocalDir.Path != "" {
-		return newLayerBuilderLocalDir(cfg.LocalDir)
+		return newLayerBuilderLocalDir(cfg.LocalDir, cfg.Attributes)
 	}
 	return nil, errors.New("no layer builder config found")
 }
 
-func newLayerBuilderLocalDir(cfg schema.LocalDir) (LayerBuilder, error) {
+func newLayerBuilderLocalDir(cfg schema.LocalDir, attributes schema.LayerAttributes) (LayerBuilder, error) {
 	dir := localdir.Dir{
 		Path: cfg.Path,
 	}
@@ -48,6 +48,6 @@ func newLayerBuilderLocalDir(cfg schema.LocalDir) (LayerBuilder, error) {
 		dir.MaxSize = s
 	}
 	return func() (v1.Layer, error) {
-		return localdir.FromFilesystem(dir)
+		return localdir.FromFilesystem(dir, attributes)
 	}, nil
 }
