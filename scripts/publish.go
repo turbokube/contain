@@ -259,6 +259,7 @@ func main() {
 		zap.L().Info("generated package", zap.String("at", dir), zap.Int64("binSize", n))
 		remainingWork = append(remainingWork, fmt.Sprintf("(cd npm/%s; npm publish --access public)", p.Name))
 	}
+	remainingWork = append(remainingWork, "npm publish --access public")
 	fmt.Println(strings.Join(remainingWork, "\n"))
 }
 
