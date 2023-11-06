@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -12,11 +13,24 @@ import (
 	"github.com/distribution/distribution/v3/registry"
 	_ "github.com/distribution/distribution/v3/registry/auth/htpasswd"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/inmemory"
+	"github.com/google/go-containerregistry/pkg/crane"
+	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/layout"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/phayes/freeport"
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	baseImageNoattest = "test/baseimages/multiarch-test-noattest.oci/"
+)
+
+// testRegistry is the host:port to use as registry host for image URLs
 var testRegistry string
+
+// testCraneOptions to be used for assertions and such
+var testCraneOptions = &crane.Options{}
 
 func TestMain(m *testing.M) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -25,6 +39,11 @@ func TestMain(m *testing.M) {
 	err := setupRegistryServer(ctx)
 	if err != nil {
 		panic(fmt.Sprintf("failed to start docker registry: %s", err))
+	}
+
+	err = loadBaseImages()
+	if err != nil {
+		panic(fmt.Sprintf("failed to load base images: %s", err))
 	}
 
 	code := m.Run()
@@ -53,6 +72,45 @@ func setupRegistryServer(ctx context.Context) error {
 
 	go dockerRegistry.ListenAndServe()
 
+	return nil
+}
+
+func loadBaseImages() error {
+	return loadBaseImage(
+		baseImageNoattest,
+		fmt.Sprintf("%s/contain-test/multiarch-base", testRegistry),
+		"sha256:5df9572dfc5f15f997d84d002274cda07ba5e10d80b667fdd788f9abb9ebf15a",
+	)
+}
+
+func loadBaseImage(path string, image string, digest string) error {
+	abspath, err := filepath.Abs("../../" + path)
+	if err != nil {
+		return fmt.Errorf("absolute path for %s: %w", path, err)
+	}
+	img, err := layout.ImageIndexFromPath(abspath)
+	if err != nil {
+		return fmt.Errorf("loading %s as OCI layout: %w", path, err)
+	}
+	ref, err := name.ParseReference(image, testCraneOptions.Name...)
+	if err != nil {
+		return err
+	}
+	var h v1.Hash
+	switch t := img.(type) {
+	case v1.ImageIndex:
+		if err := remote.WriteIndex(ref, t, testCraneOptions.Remote...); err != nil {
+			return err
+		}
+		if h, err = t.Digest(); err != nil {
+			return err
+		}
+		if h.String() != digest {
+			return fmt.Errorf("wrote digest %s but epected %s", h, digest)
+		}
+	default:
+		return fmt.Errorf("cannot push type (%T) to registry", img)
+	}
 	return nil
 }
 
