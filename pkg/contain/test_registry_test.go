@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -28,15 +30,27 @@ func TestTestRegistry(t *testing.T) {
 	if string(body[:]) != "{}" {
 		t.Errorf("unexpected response at /v2/: %s", body)
 	}
-}
 
-func TestPreloadedBaseImageNoattest(t *testing.T) {
-	image := fmt.Sprintf("%s/contain-test/multiarch-base", testRegistry)
+	run, exists := os.LookupEnv(testRunDurationEnv)
+	if exists {
+		r, err := time.ParseDuration(run)
+		if err != nil {
+			t.Errorf("parse duration %s=%s", testRunDurationEnv, run)
+		}
+		t.Logf("Running test registry for %v, then exiting", r)
+		t.Logf("Test registry host: %s", testRegistry)
+		time.Sleep(r)
+		return
+	}
+
+	// Now check the "noattest" base image
+	image := fmt.Sprintf("%s/contain-test/multiarch-base:noattest", testRegistry)
 	digest, err := crane.Digest(image)
 	if err != nil {
 		t.Error(err)
 	}
-	if digest != "sha256:5df9572dfc5f15f997d84d002274cda07ba5e10d80b667fdd788f9abb9ebf15a" {
+	// crane digest solsson/multiarch-test:noattest
+	if digest != "sha256:ad170cac387bea5246c9b85f60077b02ebf814d8b151568ad0d35c9b09097b74" {
 		t.Errorf("Unexpected base image digest %s", digest)
 	}
 	// https://github.com/google/go-containerregistry/blob/dbcd01c402b2f05bcf6fb988014c5f37e9b13559/pkg/v1/remote/descriptor.go#L97

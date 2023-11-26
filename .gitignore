@@ -4,3 +4,6 @@ node_modules
 package-lock.json
 npm
 kubeconfig
+
+# baseregistry actually persists all test pushes, keep only base images
+test/baseregistry

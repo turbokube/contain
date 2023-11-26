@@ -12,6 +12,7 @@ import (
 	dcontext "github.com/distribution/distribution/v3/context"
 	"github.com/distribution/distribution/v3/registry"
 	_ "github.com/distribution/distribution/v3/registry/auth/htpasswd"
+	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/inmemory"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -23,11 +24,18 @@ import (
 )
 
 const (
-	baseImageNoattest = "test/baseimages/multiarch-test-noattest.oci/"
+	baseImageNoattest  = "test/baseimages/multiarch-test-noattest.oci/"
+	testRunDurationEnv = "TEST_REGISTRY_RUN"
 )
 
 // testRegistry is the host:port to use as registry host for image URLs
 var testRegistry string
+
+// testRegistryRootdirectory is where registry data is stored when not using inmemory
+var testRegistryRootdirectory string
+
+// testRegistryLoadBaseimages is false because loading from tar or OCI to multi-arch was tricky
+var testRegistryLoadBaseimages = false
 
 // testCraneOptions to be used for assertions and such
 var testCraneOptions = &crane.Options{}
@@ -41,9 +49,11 @@ func TestMain(m *testing.M) {
 		panic(fmt.Sprintf("failed to start docker registry: %s", err))
 	}
 
-	err = loadBaseImages()
-	if err != nil {
-		panic(fmt.Sprintf("failed to load base images: %s", err))
+	if testRegistryLoadBaseimages {
+		err = loadBaseImages()
+		if err != nil {
+			panic(fmt.Sprintf("failed to load base images: %s", err))
+		}
 	}
 
 	code := m.Run()
@@ -61,10 +71,31 @@ func setupRegistryServer(ctx context.Context) error {
 		return fmt.Errorf("failed to get free port: %s", err)
 	}
 
+	testRegistryRootdirectory, err = filepath.Abs("../../test/baseregistry")
+	if err != nil {
+		return fmt.Errorf("abs %v", err)
+	}
+
 	testRegistry = fmt.Sprintf("localhost:%d", port)
 	config.HTTP.Addr = fmt.Sprintf("127.0.0.1:%d", port)
 	config.HTTP.DrainTimeout = time.Duration(10) * time.Second
+	// fast ephemeral
 	config.Storage = map[string]configuration.Parameters{"inmemory": map[string]interface{}{}}
+	// can be kept for debugging, can be pre-populated
+	if testRegistryRootdirectory == "" {
+		fmt.Println("    test registry is ephemeral")
+	} else {
+		fmt.Printf("    test registry root: %s\n", testRegistryRootdirectory)
+		config.Storage = map[string]configuration.Parameters{
+			"filesystem": map[string]interface{}{
+				"rootdirectory": testRegistryRootdirectory,
+			},
+			"delete": map[string]interface{}{
+				"enabled": true,
+			},
+		}
+	}
+
 	dockerRegistry, err := registry.NewRegistry(ctx, config)
 	if err != nil {
 		return fmt.Errorf("failed to create docker registry: %w", err)
@@ -75,6 +106,7 @@ func setupRegistryServer(ctx context.Context) error {
 	return nil
 }
 
+// loadBaseImages reads from image exports, see caveats with loadBaseImage
 func loadBaseImages() error {
 	return loadBaseImage(
 		baseImageNoattest,
@@ -83,6 +115,9 @@ func loadBaseImages() error {
 	)
 }
 
+// loadBaseImage is unused because it did not preserve digests
+// for a multi-arch source image (solsson/multiarch-test)
+// neither using OCI nor tar format
 func loadBaseImage(path string, image string, digest string) error {
 	abspath, err := filepath.Abs("../../" + path)
 	if err != nil {
