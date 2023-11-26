@@ -1,3 +1,5 @@
+// Package appender provides an API to push layers,
+// report progress while pushing and return a resulting image+hash
 package appender
 
 import (
