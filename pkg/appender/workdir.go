@@ -1,4 +1,4 @@
-package contain
+package appender
 
 import (
 	"os"

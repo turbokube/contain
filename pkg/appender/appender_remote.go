@@ -1,4 +1,4 @@
-package contain
+package appender
 
 import (
 	"fmt"
@@ -22,7 +22,7 @@ const (
 	progressReportMinInterval = "1s"
 )
 
-type Contain struct {
+type Appender struct {
 	config       *schema.ContainConfig
 	baseEmpty    bool
 	baseRef      name.Reference
@@ -32,8 +32,8 @@ type Contain struct {
 	craneOptions crane.Options
 }
 
-func NewContain(config *schema.ContainConfig) (*Contain, error) {
-	c := Contain{
+func New(config *schema.ContainConfig) (*Appender, error) {
+	c := Appender{
 		config:    config,
 		baseEmpty: false,
 	}
@@ -71,14 +71,14 @@ func NewContain(config *schema.ContainConfig) (*Contain, error) {
 	return &c, nil
 }
 
-func (c *Contain) Options() *[]crane.Option {
+func (c *Appender) Options() *[]crane.Option {
 	zap.L().Fatal("TODO how?")
 	return nil
 }
 
 // base produces/retrieves the base image
 // basically https://github.com/google/go-containerregistry/blob/v0.13.0/cmd/crane/cmd/append.go#L52
-func (c *Contain) base() (v1.Image, error) {
+func (c *Appender) base() (v1.Image, error) {
 	if c.mediaType != "" {
 		zap.L().Fatal("contain.Base() has already been invoked")
 	}
@@ -117,7 +117,7 @@ func (c *Contain) base() (v1.Image, error) {
 }
 
 // Append is what you call once layers are ready
-func (c *Contain) Append(layers ...v1.Layer) (v1.Hash, error) {
+func (c *Appender) Append(layers ...v1.Layer) (v1.Hash, error) {
 	// Platform support remains to be verified with for example docker hub
 	// See also https://github.com/google/go-containerregistry/issues/1456 and https://github.com/google/go-containerregistry/pull/1561
 	if len(c.config.Platforms) > 1 {
@@ -163,7 +163,7 @@ func (c *Contain) Append(layers ...v1.Layer) (v1.Hash, error) {
 }
 
 // annotate is called after append
-func (c *Contain) annotate(image v1.Image, baseDigest v1.Hash) v1.Image {
+func (c *Appender) annotate(image v1.Image, baseDigest v1.Hash) v1.Image {
 	// https://github.com/google/go-containerregistry/blob/v0.13.0/cmd/crane/cmd/append.go#L71
 	a := map[string]string{
 		specsv1.AnnotationBaseImageDigest: baseDigest.String(),
@@ -175,7 +175,7 @@ func (c *Contain) annotate(image v1.Image, baseDigest v1.Hash) v1.Image {
 	return img
 }
 
-func (c *Contain) push(image v1.Image) error {
+func (c *Appender) push(image v1.Image) error {
 	mediaType, err := image.MediaType()
 	if err != nil {
 		return err
@@ -222,7 +222,7 @@ func (c *Contain) push(image v1.Image) error {
 	return <-errChan
 }
 
-func (c *Contain) LayerType() types.MediaType {
+func (c *Appender) LayerType() types.MediaType {
 	if c.layerType == "" {
 		zap.L().Fatal("Can not return media type before Base has been called")
 	}

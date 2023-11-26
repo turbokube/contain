@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/turbokube/contain/pkg/contain"
+	"github.com/turbokube/contain/pkg/appender"
 	"github.com/turbokube/contain/pkg/layers"
 	"github.com/turbokube/contain/pkg/run"
 	"github.com/turbokube/contain/pkg/schema"
@@ -116,7 +116,7 @@ func main() {
 				zap.String("abs", workdir),
 			)
 		}
-		chdir := contain.NewChdir(workdir)
+		chdir := appender.NewChdir(workdir)
 		defer chdir.Cleanup()
 	}
 
@@ -208,7 +208,7 @@ func main() {
 		layerBuilders[i] = b
 	}
 
-	c, err := contain.NewContain(&config)
+	a, err := appender.New(&config)
 	if err != nil {
 		zap.L().Fatal("intialization", zap.Error(err))
 	}
@@ -243,7 +243,7 @@ func main() {
 	if config.Tag == "" {
 		zap.L().Fatal("append requires IMAGE env or config")
 	}
-	hash, err := c.Append(layers...)
+	hash, err := a.Append(layers...)
 	if err != nil {
 		zap.L().Fatal("append", zap.Error(err))
 	}
