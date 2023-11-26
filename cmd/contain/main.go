@@ -28,6 +28,7 @@ var (
 	base         string
 	runSelector  string
 	runNamespace string
+	fileOutput   string
 )
 
 func init() {
@@ -58,6 +59,11 @@ func init() {
 		"w",
 		false,
 		"watch layers sources and trigger build/run on change",
+	)
+	flag.StringVar(&fileOutput,
+		"file-output",
+		"",
+		"produce a builds JSON like Skaffold does",
 	)
 	flag.Usage = func() {
 		fmt.Fprintf(helpStream, "contain version: %s\n", BUILD)
@@ -248,5 +254,21 @@ func main() {
 		zap.L().Fatal("append", zap.Error(err))
 	}
 
-	fmt.Printf("%s@%v\n", config.Tag, hash)
+	buildOutput, err := contain.NewBuildOutput(config.Tag, hash)
+	if err != nil {
+		zap.L().Fatal("buildOutput", zap.Error(err))
+	}
+
+	buildOutput.Print()
+
+	if fileOutput != "" {
+		f, err := os.OpenFile(fileOutput, os.O_RDWR|os.O_CREATE, 0755)
+		if err != nil {
+			zap.L().Fatal("file-output open", zap.String("path", fileOutput), zap.Error(err))
+		}
+		if buildOutput.WriteJSON(f) != nil {
+			zap.L().Fatal("file-output write", zap.String("path", fileOutput), zap.Error(err))
+		}
+	}
+
 }
