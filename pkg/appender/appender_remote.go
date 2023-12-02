@@ -25,7 +25,7 @@ const (
 )
 
 type Appender struct {
-	config       *schema.ContainConfig
+	config       schema.ContainConfig
 	baseEmpty    bool
 	baseRef      name.Reference
 	tagRef       name.Reference
@@ -34,7 +34,7 @@ type Appender struct {
 	craneOptions crane.Options
 }
 
-func New(config *schema.ContainConfig) (*Appender, error) {
+func New(config schema.ContainConfig) (*Appender, error) {
 	c := Appender{
 		config:    config,
 		baseEmpty: false,

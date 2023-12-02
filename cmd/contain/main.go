@@ -7,9 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/turbokube/contain/pkg/appender"
-	"github.com/turbokube/contain/pkg/layers"
+	"github.com/turbokube/contain/pkg/contain"
 	"github.com/turbokube/contain/pkg/run"
 	"github.com/turbokube/contain/pkg/schema"
 	schemav1 "github.com/turbokube/contain/pkg/schema/v1"
@@ -171,6 +170,8 @@ func main() {
 			if repoExists && rtagExists {
 				config.Tag = fmt.Sprintf("%s:%s", repo, rtag)
 				zap.L().Debug("read IMAGE_REPO and IMAGE_TAG env", zap.String("tag", config.Tag))
+			} else {
+				zap.L().Fatal("config tag must be set, or env IMAGE, or envs IMAGE_REPO and IMAGE_TAG")
 			}
 		}
 	}
@@ -202,30 +203,9 @@ func main() {
 
 	zap.L().Info("config", aboutConfig...)
 
-	layerBuilders := make([]layers.LayerBuilder, len(config.Layers))
-	for i, layerCfg := range config.Layers {
-		b, err := layers.NewLayerBuilder(layerCfg)
-		if err != nil {
-			zap.L().Fatal("Failed to get layer builder",
-				zap.Any("config", layerCfg),
-				zap.Error(err),
-			)
-		}
-		layerBuilders[i] = b
-	}
-
-	a, err := appender.New(&config)
+	layers, err := contain.RunLayers(config)
 	if err != nil {
-		zap.L().Fatal("intialization", zap.Error(err))
-	}
-
-	layers := make([]v1.Layer, len(layerBuilders))
-	for i, builder := range layerBuilders {
-		layer, err := builder()
-		if err != nil {
-			zap.L().Fatal("layer builder invocation failed", zap.Error(err))
-		}
-		layers[i] = layer
+		zap.L().Fatal("layers", zap.Error(err))
 	}
 
 	if runSelector != "" {
@@ -246,15 +226,7 @@ func main() {
 		return
 	}
 
-	if config.Tag == "" {
-		zap.L().Fatal("append requires IMAGE env or config")
-	}
-	hash, err := a.Append(layers...)
-	if err != nil {
-		zap.L().Fatal("append", zap.Error(err))
-	}
-
-	buildOutput, err := contain.NewBuildOutput(config.Tag, hash)
+	buildOutput, err := contain.RunAppend(config, layers)
 	if err != nil {
 		zap.L().Fatal("buildOutput", zap.Error(err))
 	}
