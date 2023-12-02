@@ -32,7 +32,7 @@ var cases = []testcases.Testcase{
 			}
 		},
 		ExpectDigest: "sha256:---TODO-repeatable-test-builds----------------------------------",
-		Expect: func(ref string, t *testing.T) {
+		Expect: func(ref contain.Artifact, t *testing.T) {
 			fmt.Printf("TODO expect %s\n", ref)
 		},
 	},
@@ -53,7 +53,7 @@ var cases = []testcases.Testcase{
 			}
 		},
 		ExpectDigest: "sha256:---TODO-repeatable-test-builds----------------------------------",
-		Expect: func(ref string, t *testing.T) {
+		Expect: func(ref contain.Artifact, t *testing.T) {
 			fmt.Printf("TODO expect %s\n", ref)
 		},
 	},
@@ -124,7 +124,7 @@ func TestTestcases(t *testing.T) {
 				if testcase.Expect == nil {
 					t.Error("missing Expect func")
 				} else {
-					testcase.Expect(expectRef, t)
+					testcase.Expect(result, t)
 				}
 				t.Errorf("pushed   %s\n                   expected %s", result.Tag, expectRef)
 			}

@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/distribution/reference"
+	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"go.uber.org/zap"
 )
@@ -18,8 +19,25 @@ type BuildOutput struct {
 type Artifact struct {
 	// Name without :tag or digest
 	ImageName string `json:"imageName"`
-	// Tag here includes name and digest
+	// Tag here includes name and digest, i.e. the config Tag to push to (use .Http.Tag for image tag)
 	Tag string `json:"tag"`
+	// http is kept internally to assist http access
+	http ArtifactHttp
+}
+
+type ArtifactHttp struct {
+	// Host is the registry host without protocol but with port
+	Host string
+	// Repository returns the path part of the image, excluding the /v2 http api prefix
+	Repository string
+	// Tag returns the tag name or "latest" if not specified
+	Tag string
+	// Hash returns digest, with algorithm and hex separable
+	Hash v1.Hash
+}
+
+func (a *Artifact) Http() ArtifactHttp {
+	return a.http
 }
 
 // NewBuildOutput takes tag from config.Tag wich is name:tag and
@@ -47,10 +65,23 @@ func newArtifact(tag string, hash v1.Hash) (*Artifact, error) {
 		zap.L().Error("named", zap.String("parsed", full), zap.String("ref", ref.String()))
 	}
 
+	// found no way to get default repo and tag from
+	r, err := name.ParseReference(tag)
+	if err != nil {
+		zap.L().Error("parse", zap.String("ref", tag))
+		return nil, err
+	}
+
 	// actually we can't use ref because it prepends default registry, skaffold probably doesn't do that
 	return &Artifact{
 		Tag:       ref.String(),
 		ImageName: named.Name(),
+		http: ArtifactHttp{
+			Host:       r.Context().RegistryStr(),
+			Repository: r.Context().RepositoryStr(),
+			Tag:        r.Identifier(),
+			Hash:       hash,
+		},
 	}, nil
 }
 

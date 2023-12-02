@@ -23,7 +23,7 @@ func TestBuildOutput(t *testing.T) {
 			t.Errorf("%d builds", len(o.Builds))
 		}
 		if o.Builds[0].Tag != "localhost:1234/test/foo:latest@sha256:deadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33f" {
-			t.Errorf("tag %s", o.Builds[0].Tag)
+			t.Errorf("ref %s", o.Builds[0].Tag)
 		}
 		if o.Builds[0].ImageName != "localhost:1234/test/foo" {
 			t.Errorf("name %s", o.Builds[0].ImageName)
@@ -41,21 +41,47 @@ func TestBuildOutput(t *testing.T) {
 		if string(json) != "{\"builds\":[{\"imageName\":\"localhost:1234/test/foo\",\"tag\":\"localhost:1234/test/foo:latest@sha256:deadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33f\"}]}" {
 			t.Errorf("json %s", json)
 		}
+		http := o.Builds[0].Http()
+		if http.Host != "localhost:1234" {
+			t.Errorf("host %s", http.Host)
+		}
+		if http.Repository != "test/foo" {
+			t.Errorf("repository %s", http.Repository)
+		}
+		if http.Tag != "latest" {
+			t.Errorf("tag %s", http.Tag)
+		}
+		if http.Hash != h1 {
+			t.Errorf("hash %v", http.Hash)
+		}
 	})
 
 	t.Run("image with default registry", func(t *testing.T) {
-		o, err := contain.NewBuildOutput("test/foo:latest", h1)
+		o, err := contain.NewBuildOutput("test/foo:a", h1)
 		if err != nil {
 			t.Error(err)
 		}
 		if len(o.Builds) != 1 {
 			t.Errorf("%d builds", len(o.Builds))
 		}
-		if o.Builds[0].Tag != "test/foo:latest@sha256:deadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33f" {
-			t.Errorf("tag %s", o.Builds[0].Tag)
+		if o.Builds[0].Tag != "test/foo:a@sha256:deadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33f" {
+			t.Errorf("ref %s", o.Builds[0].Tag)
 		}
 		if o.Builds[0].ImageName != "test/foo" {
 			t.Errorf("name %s", o.Builds[0].ImageName)
+		}
+		http := o.Builds[0].Http()
+		if http.Host != "index.docker.io" {
+			t.Errorf("default host %s", http.Host)
+		}
+		if http.Repository != "test/foo" {
+			t.Errorf("repository %s", http.Repository)
+		}
+		if http.Tag != "a" {
+			t.Errorf("tag %s", http.Tag)
+		}
+		if http.Hash != h1 {
+			t.Errorf("hash %v", http.Hash)
 		}
 	})
 
@@ -68,10 +94,23 @@ func TestBuildOutput(t *testing.T) {
 			t.Errorf("%d builds", len(o.Builds))
 		}
 		if o.Builds[0].Tag != "test/foo@sha256:deadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33f" {
-			t.Errorf("tag %s", o.Builds[0].Tag)
+			t.Errorf("ref %s", o.Builds[0].Tag)
 		}
 		if o.Builds[0].ImageName != "test/foo" {
 			t.Errorf("name %s", o.Builds[0].ImageName)
+		}
+		http := o.Builds[0].Http()
+		if http.Host != "index.docker.io" {
+			t.Errorf("default host %s", http.Host)
+		}
+		if http.Repository != "test/foo" {
+			t.Errorf("repository %s", http.Repository)
+		}
+		if http.Tag != "latest" {
+			t.Errorf("default tag %s", http.Tag)
+		}
+		if http.Hash != h1 {
+			t.Errorf("hash %v", http.Hash)
 		}
 	})
 
