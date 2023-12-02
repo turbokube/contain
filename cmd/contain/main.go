@@ -228,7 +228,7 @@ func main() {
 
 	buildOutput, err := contain.RunAppend(config, layers)
 	if err != nil {
-		zap.L().Fatal("buildOutput", zap.Error(err))
+		zap.L().Fatal("append", zap.Error(err))
 	}
 
 	buildOutput.Print()
