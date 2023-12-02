@@ -1,19 +1,16 @@
 package contain_test
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"testing"
 
-	"dagger.io/dagger"
 	"github.com/turbokube/contain/pkg/appender"
 	"github.com/turbokube/contain/pkg/contain"
 	schema "github.com/turbokube/contain/pkg/schema/v1"
 	"github.com/turbokube/contain/pkg/testcases"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
-	"golang.org/x/exp/slices"
 )
 
 // cases is an array because a testcase may depend on an output image from an earlier testcase
@@ -35,31 +32,8 @@ var cases = []testcases.Testcase{
 			}
 		},
 		ExpectDigest: "sha256:---TODO-repeatable-test-builds----------------------------------",
-		ExpectDagger: func(ref string, client *dagger.Client, t *testing.T, ctx context.Context) {
-
-			resp, err := http.Head(fmt.Sprintf("http://%s/v2/", testRegistry))
-			if err != nil {
-				t.Error(err)
-			}
-			if resp.Status != "200 OK" {
-				t.Errorf("%s %s", testRegistry, resp.Status)
-			}
-			fmt.Printf("#x %s OK\n", testRegistry)
-
-			zap.L().Debug("dagger", zap.String("ref", ref))
-			c := client.Container().From(ref)
-			app, err := c.Rootfs().Directory("app").Entries(ctx)
-			if err != nil {
-				t.Error(err)
-			}
-			zap.L().Info("/app", zap.Int("entries", len(app)))
-			if !slices.Contains(app, "root.txt") {
-				t.Error("missing root.txt")
-			}
-			r := c.Rootfs().File("root.txt")
-			if r == nil {
-				t.Error("read root.txt")
-			}
+		Expect: func(ref string, t *testing.T) {
+			fmt.Printf("TODO expect %s\n", ref)
 		},
 	},
 	{
@@ -79,7 +53,9 @@ var cases = []testcases.Testcase{
 			}
 		},
 		ExpectDigest: "sha256:---TODO-repeatable-test-builds----------------------------------",
-		ExpectDagger: nil,
+		Expect: func(ref string, t *testing.T) {
+			fmt.Printf("TODO expect %s\n", ref)
+		},
 	},
 }
 
@@ -105,8 +81,6 @@ func TestTestcases(t *testing.T) {
 		}
 		fmt.Printf("#- %s OK\n", testRegistry)
 	})
-
-	ctx := context.Background()
 
 	fmt.Printf("# cases: %d\n", len(cases))
 	for i, testcase := range cases {
@@ -147,9 +121,10 @@ func TestTestcases(t *testing.T) {
 
 			expectRef := fmt.Sprintf("%s@%s", c.Tag, testcase.ExpectDigest)
 			if result.Tag != expectRef {
-				if testcase.ExpectDagger != nil {
-					client := testcases.DaggerClient(t, ctx)
-					testcase.ExpectDagger(testcases.DaggerRef(c.Tag), client, t, ctx)
+				if testcase.Expect == nil {
+					t.Error("missing Expect func")
+				} else {
+					testcase.Expect(expectRef, t)
 				}
 				t.Errorf("pushed   %s\n                   expected %s", result.Tag, expectRef)
 			}

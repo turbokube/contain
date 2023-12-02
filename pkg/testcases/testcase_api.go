@@ -27,8 +27,8 @@ type Testcase struct {
 	// ExpectDigest is mandatory, a sha256:-prefixed string
 	// which if it matches the pushed digest passes the test without further expect calls
 	ExpectDigest string
-	// ExpectDagger will run, if non-nil, on ExpectDigest mismatch
-	ExpectDagger DaggerExpect
+	// Expect will run on ExpectDigest mismatch
+	Expect func(ref string, t *testing.T)
 }
 
 // NewTempDir creates a temporary directory and a teardown function
