@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"testing"
 
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/turbokube/contain/pkg/appender"
 	"github.com/turbokube/contain/pkg/contain"
 	schema "github.com/turbokube/contain/pkg/schema/v1"
@@ -33,7 +35,23 @@ var cases = []testcases.Testcase{
 		},
 		ExpectDigest: "sha256:---TODO-repeatable-test-builds----------------------------------",
 		Expect: func(ref contain.Artifact, t *testing.T) {
-			fmt.Printf("TODO expect %s\n", ref)
+
+			amd64 := v1.Platform{Architecture: "amd64", OS: "linux"}
+			amd64options := append(testCraneOptions.Remote, remote.WithPlatform(amd64))
+			amd64img, err := remote.Image(ref.Reference(), amd64options...)
+			if err != nil {
+				t.Error(err)
+			}
+			amd64layers, err := amd64img.Layers()
+			if err != nil {
+				t.Error(err)
+			}
+
+			zap.L().Debug("amd64", zap.Int("layers", len(amd64layers)))
+			// https://github.com/google/go-containerregistry/blob/55ffb0092afd1313edad861a553b4fcea21b4da2/pkg/crane/export.go#L27
+			// or Extract
+			// filesystem or layer to tar
+			// abstraction on top of tar?
 		},
 	},
 	{
@@ -54,7 +72,7 @@ var cases = []testcases.Testcase{
 		},
 		ExpectDigest: "sha256:---TODO-repeatable-test-builds----------------------------------",
 		Expect: func(ref contain.Artifact, t *testing.T) {
-			fmt.Printf("TODO expect %s\n", ref)
+			fmt.Printf("TODO expect %s\n", ref.Tag)
 		},
 	},
 }

@@ -21,8 +21,10 @@ type Artifact struct {
 	ImageName string `json:"imageName"`
 	// Tag here includes name and digest, i.e. the config Tag to push to (use .Http.Tag for image tag)
 	Tag string `json:"tag"`
+	// reference is kept internally for reuse
+	reference name.Reference
 	// http is kept internally to assist http access
-	http ArtifactHttp
+	hash v1.Hash
 }
 
 type ArtifactHttp struct {
@@ -36,8 +38,17 @@ type ArtifactHttp struct {
 	Hash v1.Hash
 }
 
+func (a *Artifact) Reference() name.Reference {
+	return a.reference
+}
+
 func (a *Artifact) Http() ArtifactHttp {
-	return a.http
+	return ArtifactHttp{
+		Host:       a.reference.Context().RegistryStr(),
+		Repository: a.reference.Context().RepositoryStr(),
+		Tag:        a.reference.Identifier(),
+		Hash:       a.hash,
+	}
 }
 
 // NewBuildOutput takes tag from config.Tag wich is name:tag and
@@ -76,12 +87,8 @@ func newArtifact(tag string, hash v1.Hash) (*Artifact, error) {
 	return &Artifact{
 		Tag:       ref.String(),
 		ImageName: named.Name(),
-		http: ArtifactHttp{
-			Host:       r.Context().RegistryStr(),
-			Repository: r.Context().RepositoryStr(),
-			Tag:        r.Identifier(),
-			Hash:       hash,
-		},
+		reference: r,
+		hash:      hash,
 	}, nil
 }
 
