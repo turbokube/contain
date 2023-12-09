@@ -171,7 +171,10 @@ func (c *Appender) annotate(image v1.Image, baseDigest v1.Hash) v1.Image {
 		specsv1.AnnotationBaseImageDigest: baseDigest.String(),
 	}
 	if _, ok := c.baseRef.(name.Tag); ok {
-		a[specsv1.AnnotationBaseImageName] = c.baseRef.Name()
+		a[specsv1.AnnotationBaseImageName] = fmt.Sprintf("/%s:%s",
+			c.baseRef.Context().RepositoryStr(),
+			c.baseRef.Identifier(),
+		)
 	}
 	img := mutate.Annotations(image, a).(v1.Image)
 	return img
