@@ -62,13 +62,18 @@ var cases = []testcases.Testcase{
 			// this is probably the manifest of one of the layers, thus ^ is using Image wrong
 			raw, err := img.RawManifest()
 			Expect(err).To(BeNil())
-
 			var manifest map[string]interface{}
 			Expect(json.Unmarshal(raw, &manifest)).To(BeNil())
 			Expect(manifest["schemaVersion"]).To(Equal(2.0))
 			Expect(manifest["mediaType"]).To(Equal("application/vnd.docker.distribution.manifest.v2+json"))
 			// layers := manifest["layers"].([]interface{})
 			Expect(raw).To(MatchJSON(`{"schemaVersion":2,"mediaType":"application/vnd.docker.distribution.manifest.v2+json","config":{"mediaType":"application/vnd.docker.container.image.v1+json","size":669,"digest":"sha256:0aaa7da713d96061473b1d2a702b0fcae2d65d10479e5472d44bd2fc507f3aee"},"layers":[{"mediaType":"application/vnd.docker.image.rootfs.diff.tar.gzip","size":93,"digest":"sha256:c61587a79a418fb6188de8add2e9f694b012acde27abefd27dedaff5f02de71e"},{"mediaType":"application/vnd.docker.image.rootfs.diff.tar.gzip","size":107,"digest":"sha256:6c9f141295d5636893db1435b5a20917860516e5e772445fb08bc240af66e57b"}],"annotations":{"org.opencontainers.image.base.digest":"sha256:15ea7700e453827d5c394519a17e8f3b6086a42a9c843b134d703bc082f499c4","org.opencontainers.image.base.name":"/contain-test/multiarch-base:noattest"}}`))
+
+			m, err := remote.Get(ref.Reference(), testCraneOptions.Remote...)
+			Expect(err).To(BeNil())
+			Expect(m.Digest.Hex).To(Equal("0a84708b29bd81820985381813364837adde5ace440a77f7515e28c1e4dad9c3"))
+			// TODO how do we get a application/vnd.docker.distribution.manifest.list.v2+json
+			Expect(m.RawManifest()).To(MatchJSON(`{}`))
 
 			amd64 := v1.Platform{Architecture: "amd64", OS: "linux"}
 			amd64options := append(testCraneOptions.Remote, remote.WithPlatform(amd64))
