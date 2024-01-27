@@ -51,20 +51,7 @@ func New(config schema.ContainConfig) (*Appender, error) {
 	if c.tagRef != nil {
 		zap.L().Debug("target image", zap.String("ref", c.tagRef.String()))
 	}
-	// https://github.com/google/go-containerregistry/blob/v0.13.0/pkg/crane/options.go#L43
-	c.craneOptions = crane.Options{
-		Remote: []remote.Option{
-			remote.WithAuthFromKeychain(authn.DefaultKeychain),
-		},
-		Keychain: authn.DefaultKeychain,
-	}
-	if strings.HasSuffix(".local", c.baseRef.Context().RegistryStr()) {
-		zap.L().Debug("insecure access enabled", zap.String("registry", c.baseRef.Context().RegistryStr()))
-		crane.Insecure(&c.craneOptions)
-	} else if c.tagRef != nil && strings.HasSuffix(".local", c.tagRef.Context().RegistryStr()) {
-		zap.L().Debug("insecure access enabled", zap.String("registry", c.tagRef.Context().RegistryStr()))
-		crane.Insecure(&c.craneOptions)
-	}
+
 	return &c, nil
 }
 
