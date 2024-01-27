@@ -11,7 +11,6 @@ import (
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/types"
@@ -26,7 +25,6 @@ const (
 
 type Appender struct {
 	config       schema.ContainConfig
-	baseEmpty    bool
 	baseRef      name.Reference
 	tagRef       name.Reference
 	mediaType    types.MediaType
@@ -36,19 +34,16 @@ type Appender struct {
 
 func New(config schema.ContainConfig) (*Appender, error) {
 	c := Appender{
-		config:    config,
-		baseEmpty: false,
+		config: config,
 	}
 	var err error
-	if config.Base == "" {
-		c.baseEmpty = true
-	} else {
-		c.baseRef, err = name.ParseReference(config.Base)
-		if err != nil {
-			zap.L().Error("Failed to parse base", zap.String("ref", config.Base), zap.Error(err))
-		}
-		zap.L().Debug("base image", zap.String("ref", c.baseRef.String()))
+
+	c.baseRef, err = name.ParseReference(config.Base)
+	if err != nil {
+		zap.L().Error("Failed to parse base", zap.String("ref", config.Base), zap.Error(err))
 	}
+	zap.L().Debug("base image", zap.String("ref", c.baseRef.String()))
+
 	c.tagRef, err = name.ParseReference(config.Tag)
 	if err != nil {
 		zap.L().Error("Failed to parse result image ref", zap.String("ref", config.Tag), zap.Error(err))
@@ -87,24 +82,14 @@ func (c *Appender) base() (v1.Image, error) {
 	var base v1.Image
 	var err error
 	var mediaType = types.OCIManifestSchema1
-	var configType = types.OCIConfigJSON
-	if c.baseEmpty {
-		zap.L().Info("base unspecified, using empty image",
-			zap.String("type", string(mediaType)),
-			zap.String("configType", string(configType)),
-		)
-		base = empty.Image
-		base = mutate.MediaType(base, mediaType)
-		base = mutate.ConfigMediaType(base, configType)
-	} else {
-		base, err = remote.Image(c.baseRef, c.craneOptions.Remote...)
-		if err != nil {
-			return nil, fmt.Errorf("pulling %s: %w", c.baseRef.String(), err)
-		}
-		mediaType, err = base.MediaType()
-		if err != nil {
-			return nil, fmt.Errorf("getting base image media type: %w", err)
-		}
+
+	base, err = remote.Image(c.baseRef, c.craneOptions.Remote...)
+	if err != nil {
+		return nil, fmt.Errorf("pulling %s: %w", c.baseRef.String(), err)
+	}
+	mediaType, err = base.MediaType()
+	if err != nil {
+		return nil, fmt.Errorf("getting base image media type: %w", err)
 	}
 
 	// https://github.com/google/go-containerregistry/blob/v0.13.0/pkg/crane/append.go#L60
