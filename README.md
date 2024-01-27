@@ -118,4 +118,7 @@ hash them and append _each layer_ in order to _each platform_'s index.
 That creates a new index per platform, each one having a new digest (checksum).
 With those checksums Contain can produce a new index.
 
+In practice Contain will run append and push to the first platform,
+then derive the layers to append from that one.
+
 Currently Contain can't update attestations. Those index entries are therefore dropped.

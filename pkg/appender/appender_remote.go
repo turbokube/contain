@@ -4,18 +4,16 @@ package appender
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
-	"github.com/google/go-containerregistry/pkg/authn"
-	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/google/go-containerregistry/pkg/v1/partial"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/types"
-	specsv1 "github.com/opencontainers/image-spec/specs-go/v1"
-	schema "github.com/turbokube/contain/pkg/schema/v1"
+	"github.com/turbokube/contain/pkg/annotate"
+	"github.com/turbokube/contain/pkg/registry"
 	"go.uber.org/zap"
 )
 
@@ -23,133 +21,138 @@ const (
 	progressReportMinInterval = "1s"
 )
 
+// Appender transfers layers AND pushes manifest
+// and is reasonably efficient should multiple appenders push the same layers
 type Appender struct {
-	config       schema.ContainConfig
-	baseRef      name.Reference
-	tagRef       name.Reference
-	mediaType    types.MediaType
-	layerType    types.MediaType
-	craneOptions crane.Options
+	baseRef    name.Digest
+	baseConfig *registry.RegistryConfig
+	tagRef     name.Reference
+	annotators []annotate.Annotator
 }
 
-func New(config schema.ContainConfig) (*Appender, error) {
+type AppendAnnotate func(partial.WithRawManifest) v1.Image
+
+// AppendResultLayer is the part of go-containerregistry/pkg/v1
+type AppendResultLayer struct {
+	MediaType types.MediaType `json:"mediaType"`
+	Size      int64           `json:"size"`
+	Digest    v1.Hash         `json:"digest"`
+}
+
+// // Assert that Descriptor implements AppendResultLayer.
+// // like https://github.com/ko-build/ko/blob/v0.15.1/pkg/build/build.go#L55
+// var _ AppendResultLayer = (v1.Descriptor)(AppendResultLayer{})
+
+type AppendResult struct {
+	// Hash is the digest of the pushed manifest, including annotate
+	Hash v1.Hash
+	// AddedManifestLayers are manifest data for appended and pushed layers
+	AddedManifestLayers []AppendResultLayer
+}
+
+var AppendResultNone = AppendResult{
+	Hash:                v1.Hash{},
+	AddedManifestLayers: []AppendResultLayer{},
+}
+
+// New starts Appender setup from a fully specified base ref
+// which might be an image in an index, not necessarily Contain's base.
+// This base image has typically not been read yet, not even its manifest.
+// Remember to optionally call WithAnnotate before Append.
+func New(baseRef name.Digest, baseConfig *registry.RegistryConfig, tagRef name.Reference) (*Appender, error) {
 	c := Appender{
-		config: config,
+		baseRef:    baseRef,
+		baseConfig: baseConfig,
+		tagRef:     tagRef,
 	}
-	var err error
+	// var err error
 
-	c.baseRef, err = name.ParseReference(config.Base)
-	if err != nil {
-		zap.L().Error("Failed to parse base", zap.String("ref", config.Base), zap.Error(err))
-	}
-	zap.L().Debug("base image", zap.String("ref", c.baseRef.String()))
+	// c.baseRef, err = name.ParseReference(config.Base)
+	// fullRef := c.baseRef.(name.Digest)
+	// if err != nil {
+	// 	zap.L().Error("Failed to parse base", zap.String("ref", config.Base), zap.Error(err))
+	// }
+	// zap.L().Debug("base image", zap.String("ref", c.baseRef.String()))
 
-	c.tagRef, err = name.ParseReference(config.Tag)
-	if err != nil {
-		zap.L().Error("Failed to parse result image ref", zap.String("ref", config.Tag), zap.Error(err))
-	}
-	if c.tagRef != nil {
-		zap.L().Debug("target image", zap.String("ref", c.tagRef.String()))
-	}
+	// c.tagRef, err = name.ParseReference(config.Tag)
+	// if err != nil {
+	// 	zap.L().Error("Failed to parse result image ref", zap.String("ref", config.Tag), zap.Error(err))
+	// }
+	// if c.tagRef != nil {
+	// 	zap.L().Debug("target image", zap.String("ref", c.tagRef.String()))
+	// }
 
 	return &c, nil
 }
 
-func (c *Appender) Options() *[]crane.Option {
-	zap.L().Fatal("TODO how?")
-	return nil
+func (c *Appender) WithAnnotate(annotate annotate.Annotator) {
+	c.annotators = append(c.annotators, annotate)
+}
+
+func (c *Appender) getPushConfig() *registry.RegistryConfig {
+	return c.baseConfig
 }
 
 // base produces/retrieves the base image
 // basically https://github.com/google/go-containerregistry/blob/v0.13.0/cmd/crane/cmd/append.go#L52
 func (c *Appender) base() (v1.Image, error) {
-	if c.mediaType != "" {
-		zap.L().Fatal("contain.Base() has already been invoked")
-	}
-	var base v1.Image
-	var err error
-	var mediaType = types.OCIManifestSchema1
 
-	base, err = remote.Image(c.baseRef, c.craneOptions.Remote...)
+	base, err := remote.Image(c.baseRef, c.baseConfig.CraneOptions.Remote...)
 	if err != nil {
 		return nil, fmt.Errorf("pulling %s: %w", c.baseRef.String(), err)
 	}
-	mediaType, err = base.MediaType()
+	mediaType, err := base.MediaType()
 	if err != nil {
 		return nil, fmt.Errorf("getting base image media type: %w", err)
 	}
-
-	// https://github.com/google/go-containerregistry/blob/v0.13.0/pkg/crane/append.go#L60
+	// When starting with an ImageIndex this should not need to happen because all mediaTypes can be validated from the index manifest
 	if mediaType == types.OCIManifestSchema1 {
-		c.layerType = types.OCILayer
-	} else {
-		c.layerType = types.DockerLayer
+		return nil, fmt.Errorf("currently non-OCI manifests are de-supported, got: %s", mediaType)
 	}
-	c.mediaType = mediaType
 
 	return base, nil
 }
 
 // Append is what you call once layers are ready
-func (c *Appender) Append(layers ...v1.Layer) (v1.Hash, error) {
-	// Platform support remains to be verified with for example docker hub
-	// See also https://github.com/google/go-containerregistry/issues/1456 and https://github.com/google/go-containerregistry/pull/1561
-	if len(c.config.Platforms) > 1 {
-		zap.L().Warn("unsupported multiple platforms, falling back to all", zap.Strings("platforms", c.config.Platforms))
-	}
-	if len(c.config.Platforms) == 1 {
-		zap.L().Warn("unsupported single platform, falling back to all", zap.String("platform", c.config.Platforms[0]))
-	}
-	noresult := v1.Hash{}
+func (c *Appender) Append(layers ...v1.Layer) (AppendResult, error) {
+
 	base, err := c.base()
 	if err != nil {
 		zap.L().Error("Failed to get base image", zap.Error(err))
-		return noresult, err
+		return AppendResultNone, err
 	}
-	baseDigest, err := base.Digest()
-	if err != nil {
-		zap.L().Error("Failed to get base image digest", zap.Error(err))
-	}
+
 	img, err := mutate.AppendLayers(base, layers...)
 	if err != nil {
 		zap.L().Error("Failed to append layers", zap.Error(err))
-		return noresult, err
+		return AppendResultNone, err
 	}
-	img = c.annotate(img, baseDigest)
-	if err != nil {
-		zap.L().Error("Failed to annotate", zap.Error(err))
-		return noresult, err
+	for _, annotate := range c.annotators {
+		img = annotate(img).(v1.Image)
 	}
 	imgDigest, err := img.Digest()
 	if err != nil {
 		zap.L().Error("Failed to get result image digest", zap.Error(err))
-		return noresult, err
+		return AppendResultNone, err
 	}
 	err = c.push(img)
 	if err != nil {
 		zap.L().Error("Failed to push", zap.Error(err))
-		return noresult, err
+		return AppendResultNone, err
 	}
 	zap.L().Info("pushed",
 		zap.String("digest", imgDigest.String()),
 	)
-	return imgDigest, nil
-}
-
-// annotate is called after append
-func (c *Appender) annotate(image v1.Image, baseDigest v1.Hash) v1.Image {
-	// https://github.com/google/go-containerregistry/blob/v0.13.0/cmd/crane/cmd/append.go#L71
-	a := map[string]string{
-		specsv1.AnnotationBaseImageDigest: baseDigest.String(),
+	delta, err := c.getLayersDeltaForImages(base, img)
+	if err != nil {
+		zap.L().Error("layers delta", zap.Error(err))
+		return AppendResultNone, err
 	}
-	if _, ok := c.baseRef.(name.Tag); ok {
-		a[specsv1.AnnotationBaseImageName] = fmt.Sprintf("/%s:%s",
-			c.baseRef.Context().RepositoryStr(),
-			c.baseRef.Identifier(),
-		)
+	result := AppendResult{
+		Hash:                imgDigest,
+		AddedManifestLayers: delta,
 	}
-	img := mutate.Annotations(image, a).(v1.Image)
-	return img
+	return result, nil
 }
 
 func (c *Appender) push(image v1.Image) error {
@@ -168,7 +171,7 @@ func (c *Appender) push(image v1.Image) error {
 	errChan := make(chan error, 2)
 
 	go func() {
-		options := append(c.craneOptions.Remote, remote.WithProgress(progressChan))
+		options := append(c.getPushConfig().CraneOptions.Remote, remote.WithProgress(progressChan))
 		errChan <- remote.Write(
 			c.tagRef,
 			image,
@@ -197,11 +200,4 @@ func (c *Appender) push(image v1.Image) error {
 	}
 
 	return <-errChan
-}
-
-func (c *Appender) LayerType() types.MediaType {
-	if c.layerType == "" {
-		zap.L().Fatal("Can not return media type before Base has been called")
-	}
-	return c.layerType
 }

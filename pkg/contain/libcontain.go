@@ -1,9 +1,11 @@
 package contain
 
 import (
+	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/turbokube/contain/pkg/appender"
 	"github.com/turbokube/contain/pkg/layers"
+	"github.com/turbokube/contain/pkg/registry"
 	schemav1 "github.com/turbokube/contain/pkg/schema/v1"
 	"go.uber.org/zap"
 )
@@ -13,6 +15,11 @@ import (
 // - No side effects other than push to config.Tag
 // - Not affected by environment, i.e. config defines a repeatable build
 func Run(config schemav1.ContainConfig) (*Artifact, error) {
+
+	// index, err := multiarch.NewRequireMultiArchBase(config)
+	// if err != nil {
+	// 	return nil, err
+	// }
 	layers, err := RunLayers(config)
 	if err != nil {
 		return nil, err
@@ -56,8 +63,14 @@ func RunLayers(config schemav1.ContainConfig) ([]v1.Layer, error) {
 
 // RunAppend is the remote access part of a run
 func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, error) {
+	var prototypeBase name.Digest
+	var registryConfig *registry.RegistryConfig
 
-	a, err := appender.New(config)
+	// todo multi-arch index to target tag
+	var tag name.Digest
+	panic("TODO configure before creating appender, using multiarch index")
+
+	a, err := appender.New(prototypeBase, registryConfig, tag)
 	if err != nil {
 		zap.L().Fatal("intialization", zap.Error(err))
 	}
@@ -65,13 +78,16 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, 
 	if config.Tag == "" {
 		zap.L().Fatal("requires config tag")
 	}
-	hash, err := a.Append(layers...)
+	result, err := a.Append(layers...)
 	if err != nil {
 		zap.L().Fatal("append", zap.Error(err))
 		return nil, err
 	}
 
-	buildOutput, err := NewBuildOutput(config.Tag, hash)
+	// todo multi-arch index from prototype result to result index
+	// produces new result hash
+
+	buildOutput, err := NewBuildOutput(config.Tag, result.Hash)
 	if err != nil {
 		zap.L().Fatal("buildOutput", zap.Error(err))
 		return nil, err
