@@ -1,6 +1,7 @@
-package contain_test
+package testcases
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,7 +16,17 @@ import (
 )
 
 func TestTestRegistry(t *testing.T) {
-	resp, err := http.Get(fmt.Sprintf("http://%s/v2/", testRegistry))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	r, err := NewTestregistry(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r.Start()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/v2/", r.Host))
 	if err != nil {
 		t.Error(err)
 	}
@@ -33,18 +44,18 @@ func TestTestRegistry(t *testing.T) {
 
 	run, exists := os.LookupEnv(testRunDurationEnv)
 	if exists {
-		r, err := time.ParseDuration(run)
+		d, err := time.ParseDuration(run)
 		if err != nil {
 			t.Errorf("parse duration %s=%s", testRunDurationEnv, run)
 		}
-		t.Logf("Running test registry for %v, then exiting", r)
-		t.Logf("Test registry host: %s", testRegistry)
-		time.Sleep(r)
+		t.Logf("Running test registry for %v, then exiting", d)
+		t.Logf("Test registry host: %s", r.Host)
+		time.Sleep(d)
 		return
 	}
 
 	// Now check the "noattest" base image
-	image := fmt.Sprintf("%s/contain-test/multiarch-base:noattest", testRegistry)
+	image := fmt.Sprintf("%s/contain-test/multiarch-base:noattest", r.Host)
 	digest, err := crane.Digest(image)
 	if err != nil {
 		t.Error(err)
@@ -55,13 +66,13 @@ func TestTestRegistry(t *testing.T) {
 	}
 	// https://github.com/google/go-containerregistry/blob/dbcd01c402b2f05bcf6fb988014c5f37e9b13559/pkg/v1/remote/descriptor.go#L97
 
-	ref, err := name.ParseReference(image, testCraneOptions.Name...)
+	ref, err := name.ParseReference(image, r.CraneOptions.Name...)
 	if err != nil {
 		t.Error(err)
 	}
 
 	amd64 := v1.Platform{Architecture: "amd64", OS: "linux"}
-	amd64options := append(testCraneOptions.Remote, remote.WithPlatform(amd64))
+	amd64options := append(r.CraneOptions.Remote, remote.WithPlatform(amd64))
 	amd64img, err := remote.Image(ref, amd64options...)
 	if err != nil {
 		t.Error(err)
@@ -75,7 +86,7 @@ func TestTestRegistry(t *testing.T) {
 	}
 
 	arm64 := v1.Platform{Architecture: "arm64", OS: "linux"}
-	arm64options := append(testCraneOptions.Remote, remote.WithPlatform(arm64))
+	arm64options := append(r.CraneOptions.Remote, remote.WithPlatform(arm64))
 	arm64img, err := remote.Image(ref, arm64options...)
 	if err != nil {
 		t.Error(err)
