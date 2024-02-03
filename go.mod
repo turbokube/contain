@@ -4,7 +4,7 @@ go 1.21
 
 require (
 	github.com/distribution/reference v0.5.0
-	github.com/google/go-containerregistry v0.18.0
+	github.com/google/go-containerregistry v0.19.0
 	github.com/moby/patternmatcher v0.5.0
 	github.com/opencontainers/image-spec v1.1.0-rc3
 	github.com/spf13/afero v1.9.5
