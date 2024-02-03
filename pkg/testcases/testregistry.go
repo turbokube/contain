@@ -52,7 +52,7 @@ func (r *TestRegistry) Start() error {
 	config := &configuration.Configuration{}
 	config.Log.AccessLog.Disabled = true
 	config.Log.Level = "error"
-	logger := NewTestRegistryLogger()
+	logger := newTestRegistryLogger()
 	dcontext.SetDefaultLogger(logger)
 	port, err := freeport.GetFreePort()
 	if err != nil {
@@ -134,35 +134,35 @@ func (r *TestRegistry) loadBaseImage(path string, image string, digest string) e
 	return nil
 }
 
-type TestRegistryLogger struct {
+type testRegistryLogger struct {
 }
 
-func NewTestRegistryLogger() *TestRegistryLogger {
-	return &TestRegistryLogger{}
+func newTestRegistryLogger() *testRegistryLogger {
+	return &testRegistryLogger{}
 }
 
 // https://github.com/distribution/distribution/blob/v2.8.3/context/logger.go#L12
-func (l *TestRegistryLogger) Print(args ...interface{})                 {}
-func (l *TestRegistryLogger) Printf(format string, args ...interface{}) {}
-func (l *TestRegistryLogger) Println(args ...interface{})               {}
-func (l *TestRegistryLogger) Fatal(args ...interface{})                 {}
-func (l *TestRegistryLogger) Fatalf(format string, args ...interface{}) {}
-func (l *TestRegistryLogger) Fatalln(args ...interface{})               {}
-func (l *TestRegistryLogger) Panic(args ...interface{})                 {}
-func (l *TestRegistryLogger) Panicf(format string, args ...interface{}) {}
-func (l *TestRegistryLogger) Panicln(args ...interface{})               {}
-func (l *TestRegistryLogger) Debug(args ...interface{})                 {}
-func (l *TestRegistryLogger) Debugf(format string, args ...interface{}) {}
-func (l *TestRegistryLogger) Debugln(args ...interface{})               {}
-func (l *TestRegistryLogger) Error(args ...interface{})                 {}
-func (l *TestRegistryLogger) Errorf(format string, args ...interface{}) {}
-func (l *TestRegistryLogger) Errorln(args ...interface{})               {}
-func (l *TestRegistryLogger) Info(args ...interface{})                  {}
-func (l *TestRegistryLogger) Infof(format string, args ...interface{})  {}
-func (l *TestRegistryLogger) Infoln(args ...interface{})                {}
-func (l *TestRegistryLogger) Warn(args ...interface{})                  {}
-func (l *TestRegistryLogger) Warnf(format string, args ...interface{})  {}
-func (l *TestRegistryLogger) Warnln(args ...interface{})                {}
-func (l *TestRegistryLogger) WithError(err error) *logrus.Entry {
+func (l *testRegistryLogger) Print(args ...interface{})                 {}
+func (l *testRegistryLogger) Printf(format string, args ...interface{}) {}
+func (l *testRegistryLogger) Println(args ...interface{})               {}
+func (l *testRegistryLogger) Fatal(args ...interface{})                 {}
+func (l *testRegistryLogger) Fatalf(format string, args ...interface{}) {}
+func (l *testRegistryLogger) Fatalln(args ...interface{})               {}
+func (l *testRegistryLogger) Panic(args ...interface{})                 {}
+func (l *testRegistryLogger) Panicf(format string, args ...interface{}) {}
+func (l *testRegistryLogger) Panicln(args ...interface{})               {}
+func (l *testRegistryLogger) Debug(args ...interface{})                 {}
+func (l *testRegistryLogger) Debugf(format string, args ...interface{}) {}
+func (l *testRegistryLogger) Debugln(args ...interface{})               {}
+func (l *testRegistryLogger) Error(args ...interface{})                 {}
+func (l *testRegistryLogger) Errorf(format string, args ...interface{}) {}
+func (l *testRegistryLogger) Errorln(args ...interface{})               {}
+func (l *testRegistryLogger) Info(args ...interface{})                  {}
+func (l *testRegistryLogger) Infof(format string, args ...interface{})  {}
+func (l *testRegistryLogger) Infoln(args ...interface{})                {}
+func (l *testRegistryLogger) Warn(args ...interface{})                  {}
+func (l *testRegistryLogger) Warnf(format string, args ...interface{})  {}
+func (l *testRegistryLogger) Warnln(args ...interface{})                {}
+func (l *testRegistryLogger) WithError(err error) *logrus.Entry {
 	panic("TODO somehow get rid of the logrus dependency, used only for test registry setup")
 }
