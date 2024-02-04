@@ -54,7 +54,7 @@ docker buildx create --name $BUILDERNAME \
 export SOURCE_DATE_EPOCH=0
 
 for B in $(find . -type d -name baseimage-* | sed 's|^\./test/||'); do \
-  echo "-> Build $B ..."
+  echo "-> Build $B (with sbom and provenance - i.e. not reproducible and thus not included in git added baseregistry) ..."
   docker buildx build \
     --builder $BUILDERNAME \
     --platform=linux/amd64,linux/arm64/v8 \
