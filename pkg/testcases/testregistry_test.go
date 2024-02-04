@@ -19,12 +19,11 @@ func TestTestRegistry(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	r, err := NewTestregistry(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := NewTestregistry(ctx)
 
-	r.Start()
+	if err := r.Start(); err != nil {
+		t.Fatalf("testregistry start %v", err)
+	}
 
 	resp, err := http.Get(fmt.Sprintf("http://%s/v2/", r.Host))
 	if err != nil {
@@ -66,13 +65,13 @@ func TestTestRegistry(t *testing.T) {
 	}
 	// https://github.com/google/go-containerregistry/blob/dbcd01c402b2f05bcf6fb988014c5f37e9b13559/pkg/v1/remote/descriptor.go#L97
 
-	ref, err := name.ParseReference(image, r.CraneOptions.Name...)
+	ref, err := name.ParseReference(image, r.Config.CraneOptions.Name...)
 	if err != nil {
 		t.Error(err)
 	}
 
 	amd64 := v1.Platform{Architecture: "amd64", OS: "linux"}
-	amd64options := append(r.CraneOptions.Remote, remote.WithPlatform(amd64))
+	amd64options := append(r.Config.CraneOptions.Remote, remote.WithPlatform(amd64))
 	amd64img, err := remote.Image(ref, amd64options...)
 	if err != nil {
 		t.Error(err)
@@ -86,7 +85,7 @@ func TestTestRegistry(t *testing.T) {
 	}
 
 	arm64 := v1.Platform{Architecture: "arm64", OS: "linux"}
-	arm64options := append(r.CraneOptions.Remote, remote.WithPlatform(arm64))
+	arm64options := append(r.Config.CraneOptions.Remote, remote.WithPlatform(arm64))
 	arm64img, err := remote.Image(ref, arm64options...)
 	if err != nil {
 		t.Error(err)

@@ -19,6 +19,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/phayes/freeport"
 	"github.com/sirupsen/logrus"
+	registryconfig "github.com/turbokube/contain/pkg/registry"
 )
 
 const (
@@ -33,19 +34,21 @@ type TestRegistry struct {
 	// Host is the start of image URLs up to but excluding the first slash (after .Start)
 	Host string
 	// CraneOptions configures go-containerregistry for access to this registry (after .Start)
-	CraneOptions *crane.Options
+	Config registryconfig.RegistryConfig
 }
 
-func NewTestregistry(ctx context.Context) (*TestRegistry, error) {
+func NewTestregistry(ctx context.Context) *TestRegistry {
 	root, err := filepath.Abs("../../test/baseregistry")
+	// abs with two levels up is unlikely to fail from a package,
+	// and things that might actually fail should be in .Start
 	if err != nil {
-		return nil, fmt.Errorf("abs %v", err)
+		panic(fmt.Errorf("abs %v", err))
 	}
 
 	return &TestRegistry{
 		ctx:           ctx,
 		rootdirectory: root,
-	}, nil
+	}
 }
 
 func (r *TestRegistry) Start() error {
@@ -86,7 +89,9 @@ func (r *TestRegistry) Start() error {
 
 	go dockerRegistry.ListenAndServe()
 
-	r.CraneOptions = &crane.Options{}
+	r.Config = registryconfig.RegistryConfig{
+		CraneOptions: crane.Options{},
+	}
 
 	return nil
 }
@@ -112,14 +117,14 @@ func (r *TestRegistry) loadBaseImage(path string, image string, digest string) e
 	if err != nil {
 		return fmt.Errorf("loading %s as OCI layout: %w", path, err)
 	}
-	ref, err := name.ParseReference(image, r.CraneOptions.Name...)
+	ref, err := name.ParseReference(image, r.Config.CraneOptions.Name...)
 	if err != nil {
 		return err
 	}
 	var h v1.Hash
 	switch t := img.(type) {
 	case v1.ImageIndex:
-		if err := remote.WriteIndex(ref, t, r.CraneOptions.Remote...); err != nil {
+		if err := remote.WriteIndex(ref, t, r.Config.CraneOptions.Remote...); err != nil {
 			return err
 		}
 		if h, err = t.Digest(); err != nil {

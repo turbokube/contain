@@ -23,19 +23,14 @@ func TestMain(m *testing.M) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	r, err := testcases.NewTestregistry(ctx)
-	if err != nil {
-		panic(fmt.Sprintf("failed to init test registry: %s", err))
-	}
+	r := testcases.NewTestregistry(ctx)
 
-	err = r.Start()
-	if err != nil {
+	if err := r.Start(); err != nil {
 		panic(fmt.Sprintf("failed to start docker registry: %s", err))
 	}
 
 	if testRegistryLoadBaseimages {
-		err = r.LoadBaseImages()
-		if err != nil {
+		if err := r.LoadBaseImages(); err != nil {
 			panic(fmt.Sprintf("failed to load base images: %s", err))
 		}
 	}
@@ -43,7 +38,7 @@ func TestMain(m *testing.M) {
 	// these package vars were used by the first generation of tests
 	// but we could expose the registry instance instead
 	testRegistry = r.Host
-	testCraneOptions = r.CraneOptions
+	testCraneOptions = &r.Config.CraneOptions
 
 	code := m.Run()
 	os.Exit(code)
