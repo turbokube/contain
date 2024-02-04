@@ -106,7 +106,7 @@ func (c *Appender) base() (v1.Image, error) {
 		return nil, fmt.Errorf("getting base image media type: %w", err)
 	}
 	// When starting with an ImageIndex this should not need to happen because all mediaTypes can be validated from the index manifest
-	if mediaType == types.OCIManifestSchema1 {
+	if mediaType != types.OCIManifestSchema1 {
 		return nil, fmt.Errorf("currently non-OCI manifests are de-supported, got: %s", mediaType)
 	}
 
