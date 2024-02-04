@@ -100,14 +100,14 @@ func (r *TestRegistry) Start() error {
 func (r *TestRegistry) LoadBaseImages() error {
 	return r.loadBaseImage(
 		baseImageNoattest,
-		fmt.Sprintf("%s/contain-test/multiarch-base", r.Host),
-		"sha256:5df9572dfc5f15f997d84d002274cda07ba5e10d80b667fdd788f9abb9ebf15a",
+		fmt.Sprintf("%s/solsson/multiarch-test:noattest", r.Host),
+		"sha256:c6dde17b43016c18361cf6b2db724b84312f074f9cb332438bc3908ac603f995",
 	)
 }
 
 // loadBaseImage is unused because it did not preserve digests
-// for a multi-arch source image (solsson/multiarch-test)
 // neither using OCI nor tar format
+// Instead we use ./testregistry-setup.sh and start testregistry from the resulting root dir
 func (r *TestRegistry) loadBaseImage(path string, image string, digest string) error {
 	abspath, err := filepath.Abs("../../" + path)
 	if err != nil {

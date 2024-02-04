@@ -58,13 +58,13 @@ func TestTestRegistry(t *testing.T) {
 	}
 
 	// Now check the "noattest" base image
-	image := fmt.Sprintf("%s/contain-test/multiarch-base:noattest", r.Host)
+	image := fmt.Sprintf("%s/contain-test/baseimage-multiarch1:noattest", r.Host)
 	digest, err := crane.Digest(image)
 	if err != nil {
 		t.Error(err)
 	}
-	// crane digest solsson/multiarch-test:noattest
-	if digest != "sha256:ad170cac387bea5246c9b85f60077b02ebf814d8b151568ad0d35c9b09097b74" {
+	// ./testregistry-setup.sh
+	if digest != "sha256:c6dde17b43016c18361cf6b2db724b84312f074f9cb332438bc3908ac603f995" {
 		t.Errorf("Unexpected base image digest %s", digest)
 	}
 	// https://github.com/google/go-containerregistry/blob/dbcd01c402b2f05bcf6fb988014c5f37e9b13559/pkg/v1/remote/descriptor.go#L97

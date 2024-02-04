@@ -44,11 +44,11 @@ var cases = []testcases.Testcase{
 		Expect: func(ref contain.Artifact, t *testing.T) {
 
 			// double check base image digest
-			d, err := crane.Digest(fmt.Sprintf("%s/contain-test/multiarch-base:noattest", testRegistry))
+			d, err := crane.Digest(fmt.Sprintf("%s/contain-test/baseimage-multiarch1:noattest", testRegistry))
 			if err != nil {
 				t.Error(err)
 			}
-			if d != "sha256:ad170cac387bea5246c9b85f60077b02ebf814d8b151568ad0d35c9b09097b74" {
+			if d != "sha256:c6dde17b43016c18361cf6b2db724b84312f074f9cb332438bc3908ac603f995" {
 				t.Errorf("base digest %s", d)
 			}
 
