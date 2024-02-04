@@ -49,15 +49,21 @@ func TestAppender(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	filemap := map[string][]byte{
+	layer1, err := localdir.Layer(map[string][]byte{
 		"test.txt": []byte("test"),
-	}
-	layer, err := localdir.Layer(filemap, v1.LayerAttributes{})
+	}, v1.LayerAttributes{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	result, err := a.Append(layer)
+	layer2, err := localdir.Layer(map[string][]byte{
+		"2": []byte("2"),
+	}, v1.LayerAttributes{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := a.Append(layer1, layer2)
 	if err != nil {
 		t.Error(err)
 	}
@@ -67,13 +73,16 @@ func TestAppender(t *testing.T) {
 		t.Errorf("%s wasn't pushed? %v", tag, err)
 	}
 	Expect(tagged.MediaType).To(Equal(types.OCIManifestSchema1))
-	Expect(tagged.Digest.String()).To(Equal("sha256:002e71a20d689b4cca13e3a2a23f740e5b54faf00d6e0ab85ec5bcf7f71f632b"))
+	Expect(tagged.Digest.String()).To(Equal("sha256:c08efcef72c451bc8b7c5b9cba39f1e18bfa6bd030df188ffbfefaebcea0203f"))
 	// what's this digest for?
-	Expect(tagged.RawManifest()).To(ContainSubstring("sha256:d73a3b86e6907bc6a65ad8ad0c3ea208c831f1f82e9c71f3ec800bafdc052137"))
+	Expect(tagged.RawManifest()).To(ContainSubstring("sha256:6e18a873d324ec1e1f8a03f35fa4e29b46a7389ce2a7439342f01d6c402bf477"))
 
-	Expect(result.Hash.String()).To(Equal("sha256:002e71a20d689b4cca13e3a2a23f740e5b54faf00d6e0ab85ec5bcf7f71f632b"))
-	Expect(result.AddedManifestLayers).To(HaveLen(1))
-	added := result.AddedManifestLayers[0]
-	Expect(added.MediaType).To(Equal(types.DockerLayer))
-	Expect(added.Digest.String()).To(Equal("sha256:72b763668602c1aaab0c817a9478a823ce68e3de59239dad3561c17452dda66b"))
+	Expect(result.Hash.String()).To(Equal("sha256:c08efcef72c451bc8b7c5b9cba39f1e18bfa6bd030df188ffbfefaebcea0203f"))
+	Expect(result.AddedManifestLayers).To(HaveLen(2))
+	added1 := result.AddedManifestLayers[0]
+	Expect(added1.MediaType).To(Equal(types.DockerLayer))
+	Expect(added1.Digest.String()).To(Equal("sha256:72b763668602c1aaab0c817a9478a823ce68e3de59239dad3561c17452dda66b"))
+	added2 := result.AddedManifestLayers[1]
+	Expect(added2.MediaType).To(Equal(types.DockerLayer))
+	Expect(added2.Digest.String()).To(Equal("sha256:325d1bfeb1d4ae147119c509b873f23c0fdcfd2c829b23ed529089f4e1bb5914"))
 }
