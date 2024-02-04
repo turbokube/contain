@@ -15,6 +15,10 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 )
 
+const (
+	testRunDurationEnv = "TEST_REGISTRY_RUN"
+)
+
 func TestTestRegistry(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

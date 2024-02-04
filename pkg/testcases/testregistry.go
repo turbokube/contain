@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	baseImageNoattest  = "test/baseimages/multiarch-test-noattest.oci/"
-	testRunDurationEnv = "TEST_REGISTRY_RUN"
+	baseRegistry      = "../../test/baseregistry"
+	baseImageNoattest = "test/baseimages/multiarch-test-noattest.oci/"
 )
 
 type TestRegistry struct {
@@ -38,7 +38,7 @@ type TestRegistry struct {
 }
 
 func NewTestregistry(ctx context.Context) *TestRegistry {
-	root, err := filepath.Abs("../../test/baseregistry")
+	root, err := filepath.Abs(baseRegistry)
 	// abs with two levels up is unlikely to fail from a package,
 	// and things that might actually fail should be in .Start
 	if err != nil {
