@@ -46,12 +46,15 @@ type AppendResultLayer struct {
 type AppendResult struct {
 	// Hash is the digest of the pushed manifest, including annotate
 	Hash v1.Hash
+	// Manifest is the pushed manifest
+	Manifest *v1.Manifest
 	// AddedManifestLayers are manifest data for appended and pushed layers
 	AddedManifestLayers []AppendResultLayer
 }
 
 var AppendResultNone = AppendResult{
 	Hash:                v1.Hash{},
+	Manifest:            nil,
 	AddedManifestLayers: []AppendResultLayer{},
 }
 
@@ -135,6 +138,11 @@ func (c *Appender) Append(layers ...v1.Layer) (AppendResult, error) {
 		zap.L().Error("Failed to get result image digest", zap.Error(err))
 		return AppendResultNone, err
 	}
+	imgManifest, err := img.Manifest()
+	if err != nil {
+		zap.L().Error("Failed to get result image manifest", zap.Error(err))
+		return AppendResultNone, err
+	}
 	err = c.push(img)
 	if err != nil {
 		zap.L().Error("Failed to push", zap.Error(err))
@@ -150,6 +158,7 @@ func (c *Appender) Append(layers ...v1.Layer) (AppendResult, error) {
 	}
 	result := AppendResult{
 		Hash:                imgDigest,
+		Manifest:            imgManifest,
 		AddedManifestLayers: delta,
 	}
 	return result, nil

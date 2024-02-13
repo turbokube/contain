@@ -77,6 +77,9 @@ func TestAppender(t *testing.T) {
 	// what's this digest for?
 	Expect(tagged.RawManifest()).To(ContainSubstring("sha256:6e18a873d324ec1e1f8a03f35fa4e29b46a7389ce2a7439342f01d6c402bf477"))
 
+	Expect(result.Manifest.MediaType).To(Equal(types.OCIManifestSchema1))
+	Expect(result.Manifest.Layers).To(HaveLen(3))
+
 	Expect(result.Hash.String()).To(Equal("sha256:c08efcef72c451bc8b7c5b9cba39f1e18bfa6bd030df188ffbfefaebcea0203f"))
 	Expect(result.AddedManifestLayers).To(HaveLen(2))
 	added1 := result.AddedManifestLayers[0]
