@@ -77,8 +77,17 @@ func TestAppender(t *testing.T) {
 	// what's this digest for?
 	Expect(tagged.RawManifest()).To(ContainSubstring("sha256:6e18a873d324ec1e1f8a03f35fa4e29b46a7389ce2a7439342f01d6c402bf477"))
 
-	Expect(result.Manifest.MediaType).To(Equal(types.OCIManifestSchema1))
-	Expect(result.Manifest.Layers).To(HaveLen(3))
+	pm, err := result.Pushed.Add.MediaType()
+	Expect(err).NotTo(HaveOccurred())
+	Expect(pm).To(Equal(types.OCIManifestSchema1))
+	pd, err := result.Pushed.Add.Digest()
+	Expect(err).NotTo(HaveOccurred())
+	Expect(pd.String()).To(Equal("sha256:c08efcef72c451bc8b7c5b9cba39f1e18bfa6bd030df188ffbfefaebcea0203f"))
+	ps, err := result.Pushed.Add.Size()
+	Expect(err).NotTo(HaveOccurred())
+	Expect(ps).To(BeEquivalentTo(719))
+	Expect(result.Pushed.Platform.Architecture).To(Equal("amd64"))
+	Expect(result.Pushed.Platform.OS).To(Equal("linux"))
 
 	Expect(result.Hash.String()).To(Equal("sha256:c08efcef72c451bc8b7c5b9cba39f1e18bfa6bd030df188ffbfefaebcea0203f"))
 	Expect(result.AddedManifestLayers).To(HaveLen(2))

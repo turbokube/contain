@@ -46,15 +46,15 @@ type AppendResultLayer struct {
 type AppendResult struct {
 	// Hash is the digest of the pushed manifest, including annotate
 	Hash v1.Hash
-	// Manifest is the pushed manifest
-	Manifest *v1.Manifest
+	// Pushed is how this result can be added to an index manifest
+	Pushed mutate.IndexAddendum
 	// AddedManifestLayers are manifest data for appended and pushed layers
 	AddedManifestLayers []AppendResultLayer
 }
 
 var AppendResultNone = AppendResult{
 	Hash:                v1.Hash{},
-	Manifest:            nil,
+	Pushed:              mutate.IndexAddendum{},
 	AddedManifestLayers: []AppendResultLayer{},
 }
 
@@ -124,6 +124,11 @@ func (c *Appender) Append(layers ...v1.Layer) (AppendResult, error) {
 		zap.L().Error("Failed to get base image", zap.Error(err))
 		return AppendResultNone, err
 	}
+	baseConfig, err := base.ConfigFile()
+	if err != nil {
+		zap.L().Error("get base image config", zap.Error(err))
+		return AppendResultNone, err
+	}
 
 	img, err := mutate.AppendLayers(base, layers...)
 	if err != nil {
@@ -136,11 +141,6 @@ func (c *Appender) Append(layers ...v1.Layer) (AppendResult, error) {
 	imgDigest, err := img.Digest()
 	if err != nil {
 		zap.L().Error("Failed to get result image digest", zap.Error(err))
-		return AppendResultNone, err
-	}
-	imgManifest, err := img.Manifest()
-	if err != nil {
-		zap.L().Error("Failed to get result image manifest", zap.Error(err))
 		return AppendResultNone, err
 	}
 	err = c.push(img)
@@ -156,9 +156,15 @@ func (c *Appender) Append(layers ...v1.Layer) (AppendResult, error) {
 		zap.L().Error("layers delta", zap.Error(err))
 		return AppendResultNone, err
 	}
+	appendable := mutate.IndexAddendum{
+		Add: img,
+		Descriptor: v1.Descriptor{
+			Platform: baseConfig.Platform(),
+		},
+	}
 	result := AppendResult{
 		Hash:                imgDigest,
-		Manifest:            imgManifest,
+		Pushed:              appendable,
 		AddedManifestLayers: delta,
 	}
 	return result, nil

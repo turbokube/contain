@@ -1,10 +1,12 @@
 package multiarch
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/empty"
+	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/turbokube/contain/pkg/appender"
@@ -115,21 +117,38 @@ func (m *ImageIndex) GetPrototypeBase() (name.Digest, error) {
 	return m.prototype.base, nil
 }
 
-// WithPrototypeAppend should be called when appender has run on the prototype image
-func (m *ImageIndex) WithPrototypeAppend(result appender.AppendResult) error {
-	m.append = &result
-	// TODO produce result manifests here, to validate result and bases
-	// probably in the item impls
-	// maybe we don't need the .append prop
-	// remember platform
-	return nil
-}
+// PushIndex takes the AppendResult of the prototype contain
+// and the original index to push a new multi-arch (i.e. multi-manifest) image
+func (m *ImageIndex) PushIndex(tag name.Reference, result appender.AppendResult, config *registry.RegistryConfig) (v1.Hash, error) {
 
-// PushIndex derives indexes from prototype + append and pushes them
-// with the assumption that append has pushed all the layers
-func (m *ImageIndex) PushIndex(registry *registry.RegistryConfig) error {
-	if m.append == nil {
-		return errors.New("WithPrototypeAppend has not been called")
+	// TODO this image will err at remote.Put
+	scratch := empty.Index
+
+	append := []mutate.IndexAddendum{result.Pushed}
+	// TODO produce and add the other manifests
+
+	index := mutate.AppendManifests(scratch, append...)
+
+	hash, err := index.Digest()
+	if err != nil {
+		zap.L().Error("index digest", zap.Error(err))
+		return v1.Hash{}, err
 	}
-	return nil
+	manifest, err := index.IndexManifest()
+	if err != nil {
+		zap.L().Error("index manifest", zap.Error(err))
+		return v1.Hash{}, err
+	}
+	zap.L().Info("index",
+		zap.String("digest", hash.String()),
+		zap.Int("manifests", len(manifest.Manifests)),
+	)
+
+	err = remote.Put(tag, index, config.CraneOptions.Remote...)
+	if err != nil {
+		zap.L().Error("put", zap.Error(err))
+		return v1.Hash{}, err
+	}
+
+	return hash, nil
 }
