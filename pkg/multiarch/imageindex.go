@@ -20,10 +20,10 @@ type imageIndexItem struct {
 }
 
 type ImageIndex struct {
-	baseRef   name.Digest
-	prototype *imageIndexItem
-	remaining []*imageIndexItem
-	append    *appender.AppendResult
+	baseRef    name.Digest
+	prototype  *imageIndexItem
+	remaining  []*imageIndexItem
+	indexStart v1.ImageIndex
 }
 
 func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.RegistryConfig) (*ImageIndex, error) {
@@ -109,6 +109,17 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 		return nil, fmt.Errorf("found only one platform manifest of type %s in index %s %v", requireMediaType, baseRef, raw)
 	}
 
+	// found no clone method on v1.ImageIndex so let's reuse the fetched one
+	// (because empty.Index caused err at Push due to Image(Hash), i.e. manifest lookup, not implemented)
+	index.indexStart = mutate.RemoveManifests(baseIndex, func(desc v1.Descriptor) bool {
+		zap.L().Debug("clearing index",
+			zap.String("platform", desc.Platform.String()),
+			zap.String("digest", desc.Digest.String()),
+		)
+		// or do we want to keep attestation manifests?
+		return true
+	})
+
 	return index, nil
 }
 
@@ -120,13 +131,10 @@ func (m *ImageIndex) GetPrototypeBase() (name.Digest, error) {
 // and the original index to push a new multi-arch (i.e. multi-manifest) image
 func (m *ImageIndex) PushIndex(tag name.Reference, result appender.AppendResult, config *registry.RegistryConfig) (v1.Hash, error) {
 
-	// TODO this image will err at remote.Put
-	scratch := EmptyIndex
-
 	append := []mutate.IndexAddendum{result.Pushed}
 	// TODO produce and add the other manifests
 
-	index := mutate.AppendManifests(scratch, append...)
+	index := mutate.AppendManifests(m.indexStart, append...)
 
 	hash, err := index.Digest()
 	if err != nil {
@@ -142,6 +150,11 @@ func (m *ImageIndex) PushIndex(tag name.Reference, result appender.AppendResult,
 		zap.String("digest", hash.String()),
 		zap.Int("manifests", len(manifest.Manifests)),
 	)
+	raw, err := index.RawManifest()
+	if err != nil {
+		zap.L().Error("raw manifest", zap.Error(err))
+	}
+	fmt.Println(string(raw))
 
 	err = remote.Put(tag, index, config.CraneOptions.Remote...)
 	if err != nil {
