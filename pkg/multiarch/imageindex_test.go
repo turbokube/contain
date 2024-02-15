@@ -49,9 +49,6 @@ func TestImageIndex(t *testing.T) {
 	Expect(prototype.String()).To(Equal(fmt.Sprintf("%s/contain-test/baseimage-multiarch1@sha256:88b8e36da2fe3947b813bd52473319c3fb2e7637692ff4c499fa8bd878241852", r.Host)))
 
 	// mock result from appender package
-	// With this manifest we end up in case desc.MediaType.IsImage()
-	// https://github.com/google/go-containerregistry/blob/8dadbe76ff8c20d0e509406f04b7eade43baa6c1/pkg/v1/partial/index.go#L139
-	// which errs because idx.Image is unsupported for empty.Index
 	result := appender.AppendResult{
 		Hash: NewMockHash("sha256:50c393f158c3de2db92fa9661bfb00eda5b67c3a777c88524ed3417509631625"),
 		Pushed: mutate.IndexAddendum{

@@ -135,6 +135,8 @@ func (m *ImageIndex) PushIndex(tag name.Reference, result appender.AppendResult,
 	// TODO produce and add the other manifests
 
 	index := mutate.AppendManifests(m.indexStart, append...)
+	// if reusing the original index turns out to be a bad idea we could start from empty.Index
+	// index := mutate.AppendManifests(empty.Index, append...)
 
 	hash, err := index.Digest()
 	if err != nil {
@@ -150,24 +152,14 @@ func (m *ImageIndex) PushIndex(tag name.Reference, result appender.AppendResult,
 		zap.String("digest", hash.String()),
 		zap.Int("manifests", len(manifest.Manifests)),
 	)
-	raw, err := index.RawManifest()
+
+	taggable, err := NewTaggableIndex(index)
 	if err != nil {
-		zap.L().Error("raw manifest", zap.Error(err))
-	}
-	fmt.Println(string(raw))
-
-	// put will inderectly invoke childByHash
-	h, _ := result.Pushed.Add.Digest()
-	for _, childDesc := range manifest.Manifests {
-		if h == childDesc.Digest {
-			zap.L().Debug("child", zap.String("digest", childDesc.Digest.String()))
-		} else {
-			zap.L().Debug("mismatch", zap.String("expected", h.String()), zap.String("digest", childDesc.Digest.String()))
-		}
+		zap.L().Error("taggable", zap.Error(err))
+		return v1.Hash{}, err
 	}
 
-	// the problem seems to be that childByHash for example doesn't actually get the mutated index
-	err = remote.Put(tag, index, config.CraneOptions.Remote...)
+	err = remote.Put(tag, taggable, config.CraneOptions.Remote...)
 	if err != nil {
 		zap.L().Error("put", zap.Error(err))
 		return v1.Hash{}, err
