@@ -156,6 +156,17 @@ func (m *ImageIndex) PushIndex(tag name.Reference, result appender.AppendResult,
 	}
 	fmt.Println(string(raw))
 
+	// put will inderectly invoke childByHash
+	h, _ := result.Pushed.Add.Digest()
+	for _, childDesc := range manifest.Manifests {
+		if h == childDesc.Digest {
+			zap.L().Debug("child", zap.String("digest", childDesc.Digest.String()))
+		} else {
+			zap.L().Debug("mismatch", zap.String("expected", h.String()), zap.String("digest", childDesc.Digest.String()))
+		}
+	}
+
+	// the problem seems to be that childByHash for example doesn't actually get the mutated index
 	err = remote.Put(tag, index, config.CraneOptions.Remote...)
 	if err != nil {
 		zap.L().Error("put", zap.Error(err))
