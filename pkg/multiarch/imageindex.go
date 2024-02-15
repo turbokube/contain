@@ -5,7 +5,6 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/types"
@@ -122,7 +121,7 @@ func (m *ImageIndex) GetPrototypeBase() (name.Digest, error) {
 func (m *ImageIndex) PushIndex(tag name.Reference, result appender.AppendResult, config *registry.RegistryConfig) (v1.Hash, error) {
 
 	// TODO this image will err at remote.Put
-	scratch := empty.Index
+	scratch := EmptyIndex
 
 	append := []mutate.IndexAddendum{result.Pushed}
 	// TODO produce and add the other manifests
