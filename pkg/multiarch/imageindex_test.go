@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/types"
@@ -48,18 +49,28 @@ func TestImageIndex(t *testing.T) {
 	Expect(prototype.DigestStr()).To(Equal("sha256:88b8e36da2fe3947b813bd52473319c3fb2e7637692ff4c499fa8bd878241852"))
 	Expect(prototype.String()).To(Equal(fmt.Sprintf("%s/contain-test/baseimage-multiarch1@sha256:88b8e36da2fe3947b813bd52473319c3fb2e7637692ff4c499fa8bd878241852", r.Host)))
 
+	testtag, err := name.ParseReference(
+		fmt.Sprintf("%s/contain-test/imageindex-test1", r.Host),
+		r.Config.CraneOptions.Name...,
+	)
+	Expect(err).NotTo(HaveOccurred())
+
+	// registry will check that referenced manifests exist, so we need to push an actual image
+	prototypePushed := mutate.ConfigMediaType(empty.Image, types.OCILayer)
+	remote.Put(testtag, prototypePushed, r.Config.CraneOptions.Remote...)
+	prototypePushedDigest, err := prototypePushed.Digest()
+	Expect(err).NotTo(HaveOccurred())
+
 	// mock result from appender package
 	result := appender.AppendResult{
-		Hash: testcases.NewMockHash("sha256:50c393f158c3de2db92fa9661bfb00eda5b67c3a777c88524ed3417509631625"),
+		Hash: prototypePushedDigest,
 		Pushed: mutate.IndexAddendum{
-			Add: testcases.NewMockDescribable("", types.OCIManifestSchema1, 1234),
+			Add:        prototypePushed,
 			Descriptor: v1.Descriptor{
-				Platform: &v1.Platform{
-					Architecture: "386",
-					OS:           "linux",
-				},
+				// should we set platform here?
 			},
 		},
+		// we might not be able to mock layers when we push the remaining index manifests
 		AddedManifestLayers: []appender.AppendResultLayer{
 			{
 				MediaType: types.OCILayer,
@@ -68,21 +79,21 @@ func TestImageIndex(t *testing.T) {
 			},
 		},
 	}
-	Expect(err).NotTo(HaveOccurred())
 
-	testtag, err := name.ParseReference(
-		fmt.Sprintf("%s/contain-test/imageindex-test1", r.Host),
-		r.Config.CraneOptions.Name...,
-	)
-	Expect(err).NotTo(HaveOccurred())
 	hash, err := index.PushIndex(testtag, result, &r.Config)
 	Expect(err).NotTo(HaveOccurred())
 
-	Expect(hash.String()).NotTo(Equal("foo"))
+	Expect(hash.String()).To(Equal("sha256:7fe691a765daed6cfae1536668796535df1190d8fa00486f0580590836bdef05"))
 
-	pushed, err := remote.Head(testtag, r.Config.CraneOptions.Remote...)
+	// avoid remote.Image because it will probably unwrap index and use default platform, or something
+	pushed, err := remote.Get(testtag, r.Config.CraneOptions.Remote...)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(pushed.MediaType).To(Equal(types.OCIImageIndex))
+	pi, err := pushed.ImageIndex()
+	Expect(err).NotTo(HaveOccurred())
+	pm, err := pi.IndexManifest()
+	Expect(err).NotTo(HaveOccurred())
+	Expect(pm.MediaType).To(Equal(types.OCIImageIndex))
 
-	// TODO make sure all manifests are pushed
+	// TODO verify that multiarch actually added the other image(s)
+	Expect(len(pm.Manifests)).To(Equal(2))
 }
