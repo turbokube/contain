@@ -1,4 +1,4 @@
-package multiarch_test
+package testcases
 
 import (
 	"encoding/hex"

@@ -50,9 +50,9 @@ func TestImageIndex(t *testing.T) {
 
 	// mock result from appender package
 	result := appender.AppendResult{
-		Hash: NewMockHash("sha256:50c393f158c3de2db92fa9661bfb00eda5b67c3a777c88524ed3417509631625"),
+		Hash: testcases.NewMockHash("sha256:50c393f158c3de2db92fa9661bfb00eda5b67c3a777c88524ed3417509631625"),
 		Pushed: mutate.IndexAddendum{
-			Add: NewMockDescribable("", types.OCIManifestSchema1, 1234),
+			Add: testcases.NewMockDescribable("", types.OCIManifestSchema1, 1234),
 			Descriptor: v1.Descriptor{
 				Platform: &v1.Platform{
 					Architecture: "386",
@@ -64,7 +64,7 @@ func TestImageIndex(t *testing.T) {
 			{
 				MediaType: types.OCILayer,
 				Size:      1,
-				Digest:    NewMockHash("sha256:4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"),
+				Digest:    testcases.NewMockHash("sha256:4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"),
 			},
 		},
 	}
