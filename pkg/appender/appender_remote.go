@@ -32,16 +32,26 @@ type Appender struct {
 
 type AppendAnnotate func(partial.WithRawManifest) v1.Image
 
-// AppendResultLayer is the part of go-containerregistry/pkg/v1
+// AppendResultLayer is required part of go-containerregistry v1.Descriptor
+// and sufficient to define a layer appended to a manifest
 type AppendResultLayer struct {
 	MediaType types.MediaType `json:"mediaType"`
 	Size      int64           `json:"size"`
 	Digest    v1.Hash         `json:"digest"`
 }
 
-// // Assert that Descriptor implements AppendResultLayer.
-// // like https://github.com/ko-build/ko/blob/v0.15.1/pkg/build/build.go#L55
-// var _ AppendResultLayer = (v1.Descriptor)(AppendResultLayer{})
+func (l *AppendResultLayer) Descriptor() v1.Descriptor {
+	return v1.Descriptor{
+		MediaType:    l.MediaType,
+		Size:         l.Size,
+		Digest:       l.Digest,
+		Data:         nil,
+		URLs:         nil,
+		Annotations:  nil,
+		Platform:     nil,
+		ArtifactType: "",
+	}
+}
 
 type AppendResult struct {
 	// Hash is the digest of the pushed manifest, including annotate

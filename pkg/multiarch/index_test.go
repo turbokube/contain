@@ -13,6 +13,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/types"
 	. "github.com/onsi/gomega"
 	"github.com/turbokube/contain/pkg/appender"
+	"github.com/turbokube/contain/pkg/localdir"
 	"github.com/turbokube/contain/pkg/multiarch"
 	schema "github.com/turbokube/contain/pkg/schema/v1"
 	"github.com/turbokube/contain/pkg/testcases"
@@ -20,7 +21,7 @@ import (
 	"go.uber.org/zap/zaptest"
 )
 
-func TestImageIndex(t *testing.T) {
+func TestIndexManifests(t *testing.T) {
 	RegisterTestingT(t)
 
 	logger := zaptest.NewLogger(t, zaptest.Level(zap.DebugLevel))
@@ -56,7 +57,10 @@ func TestImageIndex(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 
 	// registry will check that referenced manifests exist, so we need to push an actual image
-	prototypePushed := mutate.ConfigMediaType(empty.Image, types.OCILayer)
+	prototypePushed := mutate.ConfigMediaType(empty.Image, types.OCIManifestSchema1)
+	layer1, added1 := MockLayer("test1.txt", "test")
+	prototypePushed, err = mutate.AppendLayers(prototypePushed, layer1)
+	Expect(err).NotTo(HaveOccurred())
 	remote.Put(testtag, prototypePushed, r.Config.CraneOptions.Remote...)
 	prototypePushedDigest, err := prototypePushed.Digest()
 	Expect(err).NotTo(HaveOccurred())
@@ -70,14 +74,7 @@ func TestImageIndex(t *testing.T) {
 				// should we set platform here?
 			},
 		},
-		// we might not be able to mock layers when we push the remaining index manifests
-		AddedManifestLayers: []appender.AppendResultLayer{
-			{
-				MediaType: types.OCILayer,
-				Size:      1,
-				Digest:    testcases.NewMockHash("sha256:4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"),
-			},
-		},
+		AddedManifestLayers: []appender.AppendResultLayer{added1},
 	}
 
 	hash, err := index.PushIndex(testtag, result, &r.Config)
@@ -96,4 +93,22 @@ func TestImageIndex(t *testing.T) {
 
 	// TODO verify that multiarch actually added the other image(s)
 	Expect(len(pm.Manifests)).To(Equal(2))
+}
+
+func MockLayer(filepath string, content string) (v1.Layer, appender.AppendResultLayer) {
+	filemap := make(map[string][]byte)
+	filemap[filepath] = []byte(content)
+	layer, err := localdir.Layer(filemap, schema.LayerAttributes{})
+	Expect(err).NotTo(HaveOccurred())
+	m, err := layer.MediaType()
+	Expect(err).NotTo(HaveOccurred())
+	h, err := layer.Digest()
+	Expect(err).NotTo(HaveOccurred())
+	s, err := layer.Size()
+	Expect(err).NotTo(HaveOccurred())
+	return layer, appender.AppendResultLayer{
+		MediaType: m,
+		Digest:    h,
+		Size:      s,
+	}
 }

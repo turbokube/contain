@@ -6,7 +6,7 @@ import (
 	"github.com/turbokube/contain/pkg/appender"
 	"github.com/turbokube/contain/pkg/layers"
 	"github.com/turbokube/contain/pkg/registry"
-	schemav1 "github.com/turbokube/contain/pkg/schema/v1"
+	schema "github.com/turbokube/contain/pkg/schema/v1"
 	"go.uber.org/zap"
 )
 
@@ -14,7 +14,7 @@ import (
 // - Depends on a zap.ReplaceGlobals logger
 // - No side effects other than push to config.Tag
 // - Not affected by environment, i.e. config defines a repeatable build
-func Run(config schemav1.ContainConfig) (*Artifact, error) {
+func Run(config schema.ContainConfig) (*Artifact, error) {
 
 	// index, err := multiarch.NewRequireMultiArchBase(config)
 	// if err != nil {
@@ -32,7 +32,7 @@ func Run(config schemav1.ContainConfig) (*Artifact, error) {
 }
 
 // RunLayers is the file system access part of a run
-func RunLayers(config schemav1.ContainConfig) ([]v1.Layer, error) {
+func RunLayers(config schema.ContainConfig) ([]v1.Layer, error) {
 
 	layerBuilders := make([]layers.LayerBuilder, len(config.Layers))
 	for i, layerCfg := range config.Layers {
@@ -62,7 +62,7 @@ func RunLayers(config schemav1.ContainConfig) ([]v1.Layer, error) {
 }
 
 // RunAppend is the remote access part of a run
-func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, error) {
+func RunAppend(config schema.ContainConfig, layers []v1.Layer) (*BuildOutput, error) {
 	var prototypeBase name.Digest
 	var registryConfig *registry.RegistryConfig
 

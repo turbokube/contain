@@ -1,8 +1,11 @@
 package appender_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/name"
@@ -11,7 +14,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/turbokube/contain/pkg/appender"
 	"github.com/turbokube/contain/pkg/localdir"
-	v1 "github.com/turbokube/contain/pkg/schema/v1"
+	schema "github.com/turbokube/contain/pkg/schema/v1"
 	"github.com/turbokube/contain/pkg/testcases"
 )
 
@@ -51,14 +54,14 @@ func TestAppender(t *testing.T) {
 
 	layer1, err := localdir.Layer(map[string][]byte{
 		"test.txt": []byte("test"),
-	}, v1.LayerAttributes{})
+	}, schema.LayerAttributes{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	layer2, err := localdir.Layer(map[string][]byte{
 		"2": []byte("2"),
-	}, v1.LayerAttributes{})
+	}, schema.LayerAttributes{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,4 +100,35 @@ func TestAppender(t *testing.T) {
 	added2 := result.AddedManifestLayers[1]
 	Expect(added2.MediaType).To(Equal(types.DockerLayer))
 	Expect(added2.Digest.String()).To(Equal("sha256:325d1bfeb1d4ae147119c509b873f23c0fdcfd2c829b23ed529089f4e1bb5914"))
+}
+
+func TestAppenderResultLayer(t *testing.T) {
+	RegisterTestingT(t)
+
+	r := appender.AppendResultLayer{
+		MediaType: types.OCILayerZStd,
+		Size:      123,
+		Digest:    testcases.NewMockHash(""),
+	}
+	d := r.Descriptor()
+
+	// test that the struct defintion is a subset of v1.Descriptor
+	// and that all subset field values are included
+	superset := reflect.ValueOf(d)
+	subset := reflect.ValueOf(r)
+	for i := 0; i < subset.NumField(); i++ {
+		field := subset.Type().Field(i)
+		if !superset.FieldByName(field.Name).IsValid() {
+			t.Errorf("Field %s is not present in LargeStruct\n", field.Name)
+		} else {
+			Expect(subset.FieldByName(field.Name).Interface()).To(Equal(superset.FieldByName(field.Name).Interface()))
+		}
+	}
+
+	// test that fields required for JSON marshalling are present
+	j1 := bytes.NewBuffer([]byte{})
+	json.NewEncoder(j1).Encode(r)
+	j2 := bytes.NewBuffer([]byte{})
+	json.NewEncoder(j2).Encode(d)
+	Expect(j1).To(Equal(j2))
 }
