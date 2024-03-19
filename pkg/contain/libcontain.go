@@ -5,16 +5,17 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/turbokube/contain/pkg/appender"
 	"github.com/turbokube/contain/pkg/layers"
+	"github.com/turbokube/contain/pkg/multiarch"
 	"github.com/turbokube/contain/pkg/registry"
-	schema "github.com/turbokube/contain/pkg/schema/v1"
+	schemav1 "github.com/turbokube/contain/pkg/schema/v1"
 	"go.uber.org/zap"
 )
 
 // Run is what you call if you have a complete config and want to push an artifact
 // - Depends on a zap.ReplaceGlobals logger
-// - No side effects other than push to config.Tag
+// - No side effects other than push to config.Tag (and child tags in case of an index)
 // - Not affected by environment, i.e. config defines a repeatable build
-func Run(config schema.ContainConfig) (*Artifact, error) {
+func Run(config schemav1.ContainConfig) (*Artifact, error) {
 
 	// index, err := multiarch.NewRequireMultiArchBase(config)
 	// if err != nil {
@@ -32,7 +33,7 @@ func Run(config schema.ContainConfig) (*Artifact, error) {
 }
 
 // RunLayers is the file system access part of a run
-func RunLayers(config schema.ContainConfig) ([]v1.Layer, error) {
+func RunLayers(config schemav1.ContainConfig) ([]v1.Layer, error) {
 
 	layerBuilders := make([]layers.LayerBuilder, len(config.Layers))
 	for i, layerCfg := range config.Layers {
@@ -62,32 +63,59 @@ func RunLayers(config schema.ContainConfig) ([]v1.Layer, error) {
 }
 
 // RunAppend is the remote access part of a run
-func RunAppend(config schema.ContainConfig, layers []v1.Layer) (*BuildOutput, error) {
-	var prototypeBase name.Digest
-	var registryConfig *registry.RegistryConfig
+func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, error) {
+	// source repo can differ from destination repo, we should probably struct tag + remote config
+	var baseRegistry *registry.RegistryConfig
+	var tagRegistry *registry.RegistryConfig
 
-	// todo multi-arch index to target tag
-	var tag name.Digest
-	panic("TODO configure before creating appender, using multiarch index")
-
-	a, err := appender.New(prototypeBase, registryConfig, tag)
+	baseRegistry, err := registry.New(config)
 	if err != nil {
-		zap.L().Fatal("intialization", zap.Error(err))
+		zap.L().Error("registry", zap.Error(err))
+		return nil, err
 	}
+	tagRegistry = baseRegistry
 
 	if config.Tag == "" {
 		zap.L().Fatal("requires config tag")
 	}
-	result, err := a.Append(layers...)
+	buildOutputTag, err := name.ParseReference(config.Tag)
 	if err != nil {
-		zap.L().Fatal("append", zap.Error(err))
+		zap.L().Error("tag", zap.Error(err))
+		return nil, err
+	}
+
+	// currently we assume that config base is an index
+	index, err := multiarch.NewFromMultiArchBase(config, baseRegistry)
+	if err != nil {
+		zap.L().Error("index", zap.Error(err))
+		return nil, err
+	}
+
+	each := func(b name.Digest, t name.Reference, tr *registry.RegistryConfig) (v1.Hash, int64, error) {
+		a, err := appender.New(b, tr, t)
+		if err != nil {
+			zap.L().Error("appender", zap.Error(err))
+			return v1.Hash{}, 0, err
+		}
+		// todo WithAnnotate?
+		r, err := a.Append(layers...)
+		if err != nil {
+			zap.L().Error("append", zap.Error(err))
+			return v1.Hash{}, 0, err
+		}
+		return r.Hash, r.Pushed.Size, nil
+	}
+
+	resultHash, err := index.PushWithAppend(each, buildOutputTag, tagRegistry)
+	if err != nil {
+		zap.L().Error("index push", zap.Error(err))
 		return nil, err
 	}
 
 	// todo multi-arch index from prototype result to result index
 	// produces new result hash
 
-	buildOutput, err := NewBuildOutput(config.Tag, result.Hash)
+	buildOutput, err := NewBuildOutput(buildOutputTag.String(), resultHash)
 	if err != nil {
 		zap.L().Fatal("buildOutput", zap.Error(err))
 		return nil, err

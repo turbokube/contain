@@ -237,6 +237,12 @@ func TestTestcases(t *testing.T) {
 			if err != nil {
 				t.Errorf("append %v", err)
 			}
+			if buildOutput == nil {
+				t.Fatalf("nil buildOutput")
+			}
+			if len(buildOutput.Builds) == 0 {
+				t.Errorf("Zero builds in buildOutput %v", buildOutput)
+			}
 			result := buildOutput.Builds[0]
 
 			expectRef := fmt.Sprintf("%s@%s", c.Tag, testcase.ExpectDigest)

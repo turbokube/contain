@@ -15,14 +15,35 @@ import (
 	"go.uber.org/zap"
 )
 
-var noDigestYet = name.Digest{}
+var noDigestYet = v1.Hash{}
 
 type IndexManifests struct {
 	baseRef    name.Digest
-	prototype  name.Digest
-	pending    []*v1.Manifest
+	toAppend   []ToAppend
 	indexStart v1.ImageIndex
+	prototype  *ToAppend
 }
+
+type ToAppend struct {
+	// base is the ref for using a manifest item as base image
+	base name.Digest
+	// meta is the manifest item, but the digest is not known before contain
+	meta *v1.Descriptor
+	// baseManifest is the manifest of base, in case we need any information from there
+	baseManifest *v1.Manifest
+}
+
+func newToAppend(baseRef name.Digest, manifestMeta v1.Descriptor) ToAppend {
+	pendingDigest := manifestMeta.DeepCopy()
+	pendingDigest.Digest = noDigestYet
+	pendingDigest.Size = -1
+	return ToAppend{
+		base: baseRef.Digest(manifestMeta.Digest.String()),
+		meta: pendingDigest,
+	}
+}
+
+type EachAppend func(baseRef name.Digest, tagRef name.Reference, tagRegistry *registry.RegistryConfig) (v1.Hash, int64, error)
 
 func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.RegistryConfig) (*IndexManifests, error) {
 	baseParsed, err := name.ParseReference(config.Base)
@@ -56,8 +77,8 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 	}
 
 	index := &IndexManifests{
-		baseRef: baseRef,
-		pending: make([]*v1.Manifest, len(baseIndexManifest.Manifests)-1),
+		baseRef:  baseRef,
+		toAppend: make([]ToAppend, len(baseIndexManifest.Manifests)),
 	}
 
 	requireMediaType := types.OCIManifestSchema1
@@ -81,18 +102,20 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 			)
 			continue
 		}
-		if index.prototype == noDigestYet {
-			index.prototype = index.baseRef.Digest(d.Digest.String())
-		} else {
-			index.pending[i-1], err = index.getChildManifest(index.baseRef, d, baseRegistry)
-			if err != nil {
-				zap.L().Error("index descriptor to manifest", zap.Error(err))
-				return nil, err
-			}
+		// the only manifest entry type we support atm one that needs the contain mutation applied to it
+		index.toAppend[i] = newToAppend(index.baseRef, d)
+		// we probably don't need prototype or pending (child manifests) given the deprecations below
+		if index.prototype == nil {
+			index.prototype = &index.toAppend[i]
+		}
+		index.toAppend[i].baseManifest, err = index.getChildManifest(index.baseRef, d, baseRegistry)
+		if err != nil {
+			zap.L().Error("index descriptor to manifest", zap.Error(err))
+			return nil, err
 		}
 	}
 
-	if index.prototype == noDigestYet {
+	if index.prototype == nil {
 		raw, err := baseIndex.RawManifest()
 		if err != nil {
 			return nil, fmt.Errorf("raw manifest for debugging %v", err)
@@ -101,7 +124,7 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 	}
 
 	// reminder: we're stricter than necessary in early iterations, to help standardize on index types
-	if len(index.pending) == 0 {
+	if len(index.toAppend) == 0 {
 		raw, err := baseIndex.RawManifest()
 		if err != nil {
 			return nil, fmt.Errorf("raw manifest for debugging %v", err)
@@ -160,12 +183,15 @@ func (m *IndexManifests) getChildManifest(baseRef name.Digest, manifest v1.Descr
 	return currentmanifest, nil
 }
 
+// GetPrototypeBase gets a single base to operate on as a prototype of how all archs/manifests should be mutated
+// Deprecated: see EachAppend
 func (m *IndexManifests) GetPrototypeBase() (name.Digest, error) {
-	return m.prototype, nil
+	return m.prototype.base, nil
 }
 
 // PushIndex takes the AppendResult of the prototype contain
 // and the original index to push a new multi-arch (i.e. multi-manifest) image
+// Deprecated: hard to use because config can't be updated and referential consistency at push is non-trivial
 func (m *IndexManifests) PushIndex(tag name.Reference, result appender.AppendResult, config *registry.RegistryConfig) (v1.Hash, error) {
 
 	layers := make([]v1.Descriptor, len(result.AddedManifestLayers))
@@ -175,7 +201,8 @@ func (m *IndexManifests) PushIndex(tag name.Reference, result appender.AppendRes
 
 	indexAppend := []mutate.IndexAddendum{result.Pushed}
 
-	for i, child := range m.pending {
+	for i, to := range m.toAppend[1:] {
+		child := to.baseManifest
 		zap.L().Info("layers",
 			zap.Any("child", child),
 			zap.Int("existing", len(child.Layers)),
@@ -227,4 +254,34 @@ func (m *IndexManifests) PushIndex(tag name.Reference, result appender.AppendRes
 	}
 
 	return hash, nil
+}
+
+func (m *IndexManifests) PushWithAppend(append EachAppend, tagRef name.Reference, tagRegistry *registry.RegistryConfig) (v1.Hash, error) {
+	var manifests = make([]mutate.IndexAddendum, len(m.toAppend))
+	for i, c := range m.toAppend {
+		if c.meta.Digest != noDigestYet {
+			zap.L().Fatal("has digest already", zap.Int("item", i), zap.Any("toAppend", c))
+		}
+		pushed, size, err := append(c.base, tagRef, tagRegistry)
+		if err != nil {
+			zap.L().Error("append", zap.Int("item", i), zap.Any("base", c), zap.Error(err))
+			return v1.Hash{}, err
+		}
+		c.meta.Digest = pushed
+		c.meta.Size = size
+		// TODO use AppendResult and verify for example platform match?
+		//manifests[i] =
+	}
+	resultIndex := mutate.AppendManifests(m.indexStart, manifests...)
+	resultTaggable, err := NewTaggableIndex(resultIndex)
+	if err != nil {
+		zap.L().Error("taggable", zap.Any("index", resultIndex), zap.Error(err))
+		return v1.Hash{}, err
+	}
+	err = remote.Put(tagRef, resultTaggable, tagRegistry.CraneOptions.Remote...)
+	if err != nil {
+		zap.L().Error("index put", zap.Any("ref", tagRef), zap.Error(err))
+		return v1.Hash{}, err
+	}
+	return resultIndex.Digest()
 }

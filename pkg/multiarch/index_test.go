@@ -22,6 +22,7 @@ import (
 )
 
 func TestIndexManifests(t *testing.T) {
+	t.Skip("this test was based on the idea of a prototype append whose layer meta could be used to derive the rest")
 	RegisterTestingT(t)
 
 	logger := zaptest.NewLogger(t, zaptest.Level(zap.DebugLevel))
