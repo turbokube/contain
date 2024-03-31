@@ -8,6 +8,7 @@ GITADD="test/baseregistry"
 REGISTRYNAME=testregistry
 BUILDERNAME=containbuild
 
+mkdir -p "$ROOT"
 [ -z "$(ls -A "$ROOT")" ] || (echo "-> Non-empty rootdirectory $ROOT" && exit 1)
 
 echo "-> Create base registry ..."
