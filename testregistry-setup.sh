@@ -3,7 +3,8 @@
 set -eo pipefail
 YBIN="$(dirname $0)"
 
-[ -n "$ROOT" ] || ROOT="$(pwd)/test/baseregistry"
+GITADD="test/baseregistry"
+[ -n "$ROOT" ] || ROOT="$(pwd)/$GITADD"
 REGISTRYNAME=testregistry
 BUILDERNAME=containbuild
 
@@ -48,6 +49,7 @@ docker buildx stop containbuild 2>/dev/null || true
 docker buildx rm containbuild 2>/dev/null || true
 docker buildx create --name $BUILDERNAME \
   --config $BUILDKIT_CONFIG \
+  --driver-opt image=moby/buildkit:v0.13.1 \
   --bootstrap
 
 # https://www.docker.com/blog/highlights-buildkit-v0-11-release/#3-source-date-epoch
@@ -58,7 +60,7 @@ for B in $(find . -type d -name baseimage-* | sed 's|^\./test/||'); do \
   docker buildx build \
     --builder $BUILDERNAME \
     --platform=linux/amd64,linux/arm64/v8 \
-    --output type=image,push=true,name=$REGISTRY_IP:$HOSTPORT/contain-test/$B:latest,oci-mediatypes=true \
+    --output type=image,push=true,name=$REGISTRY_IP:$HOSTPORT/contain-test/$B:latest,oci-mediatypes=true,rewrite-timestamp=true \
     ./test/$B
   crane manifest localhost:$HOSTPORT/contain-test/$B:latest | grep mediaType
   echo "-> Build $B without attestation (docker manifest type) ..."
@@ -66,7 +68,7 @@ for B in $(find . -type d -name baseimage-* | sed 's|^\./test/||'); do \
     --builder $BUILDERNAME \
     --platform=linux/amd64,linux/arm64/v8 \
     --sbom=false --provenance=false \
-    --output type=image,push=true,name=$REGISTRY_IP:$HOSTPORT/contain-test/$B:noattest-docker,oci-mediatypes=false \
+    --output type=image,push=true,name=$REGISTRY_IP:$HOSTPORT/contain-test/$B:noattest-docker,oci-mediatypes=false,rewrite-timestamp=true \
     ./test/$B
   crane manifest localhost:$HOSTPORT/contain-test/$B:noattest-docker | grep mediaType
   echo "-> Build $B without attestation (OCI manifest type) ..."
@@ -74,7 +76,7 @@ for B in $(find . -type d -name baseimage-* | sed 's|^\./test/||'); do \
     --builder $BUILDERNAME \
     --platform=linux/amd64,linux/arm64/v8 \
     --sbom=false --provenance=false \
-    --output type=image,push=true,name=$REGISTRY_IP:$HOSTPORT/contain-test/$B:noattest,oci-mediatypes=true \
+    --output type=image,push=true,name=$REGISTRY_IP:$HOSTPORT/contain-test/$B:noattest,oci-mediatypes=true,rewrite-timestamp=true \
     ./test/$B
   crane manifest localhost:$HOSTPORT/contain-test/$B:noattest | grep mediaType
 done
@@ -82,3 +84,5 @@ done
 echo "-> Cleanup ..."
 docker buildx stop --builder $BUILDERNAME
 docker buildx rm --builder $BUILDERNAME
+
+echo "-> Note that $GITADD requires git add -f (it's in .gitignore so test pushes stay unversioned)"
