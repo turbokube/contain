@@ -24,7 +24,7 @@ contain --help
 
 
 
-skaffold $DEFAULT_REPO -f skaffold.test.yaml build --file-output=dist/test.artifacts $@
+skaffold $DEFAULT_REPO -f skaffold.test.yaml build --file-output=dist/test.artifacts --cache-artifacts=false $@
 
 skaffold -f skaffold.test.yaml test -a dist/test.artifacts
 
