@@ -43,7 +43,7 @@ func newToAppend(baseRef name.Digest, manifestMeta v1.Descriptor) ToAppend {
 	}
 }
 
-type EachAppend func(baseRef name.Digest, tagRef name.Reference, tagRegistry *registry.RegistryConfig) (v1.Hash, int64, error)
+type EachAppend func(baseRef name.Digest, tagRef name.Reference, tagRegistry *registry.RegistryConfig) (mutate.IndexAddendum, error)
 
 func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.RegistryConfig) (*IndexManifests, error) {
 	baseParsed, err := name.ParseReference(config.Base)
@@ -240,6 +240,12 @@ func (m *IndexManifests) PushIndex(tag name.Reference, result appender.AppendRes
 		zap.String("digest", hash.String()),
 		zap.Int("manifests", len(manifest.Manifests)),
 	)
+	rawmanifest, err := index.RawManifest()
+	if err != nil {
+		zap.L().Error("index raw manifest", zap.Error(err))
+		return v1.Hash{}, err
+	}
+	zap.L().Info("raw manifest", zap.ByteString("body", rawmanifest))
 
 	taggable, err := NewTaggableIndex(index)
 	if err != nil {
@@ -262,17 +268,17 @@ func (m *IndexManifests) PushWithAppend(append EachAppend, tagRef name.Reference
 		if c.meta.Digest != noDigestYet {
 			zap.L().Fatal("has digest already", zap.Int("item", i), zap.Any("toAppend", c))
 		}
-		pushed, size, err := append(c.base, tagRef, tagRegistry)
+		var err error
+		manifests[i], err = append(c.base, tagRef, tagRegistry)
 		if err != nil {
 			zap.L().Error("append", zap.Int("item", i), zap.Any("base", c), zap.Error(err))
 			return v1.Hash{}, err
 		}
-		c.meta.Digest = pushed
-		c.meta.Size = size
-		// TODO use AppendResult and verify for example platform match?
-		//manifests[i] =
 	}
 	resultIndex := mutate.AppendManifests(m.indexStart, manifests...)
+	if resultIndex == nil {
+		zap.L().Fatal("nil result from AppendManifests")
+	}
 	resultTaggable, err := NewTaggableIndex(resultIndex)
 	if err != nil {
 		zap.L().Error("taggable", zap.Any("index", resultIndex), zap.Error(err))

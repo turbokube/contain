@@ -1,6 +1,8 @@
 package multiarch
 
 import (
+	"encoding/json"
+
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/partial"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
@@ -24,9 +26,15 @@ var _ partial.Describable = (*TaggableIndex)(nil)
 // so later mutations won't affect the manifest
 // and calls to interface methods won't err
 func NewTaggableIndex(index v1.ImageIndex) (TaggableIndex, error) {
-	manifest, err := index.RawManifest()
+	// index.RawManifest panic at v0.19.0/pkg/v1/partial/with.go:322 after mutate.AppendManifests
+	manifest, err := index.IndexManifest()
 	if err != nil {
-		zap.L().Error("raw manifest", zap.Error(err))
+		zap.L().Error("manifest", zap.Error(err))
+		return TaggableIndex{}, err
+	}
+	manifestjson, err := json.Marshal(manifest)
+	if err != nil {
+		zap.L().Error("marshal", zap.Any("manifest", manifest), zap.Error(err))
 		return TaggableIndex{}, err
 	}
 	digest, err := index.Digest()
@@ -45,7 +53,7 @@ func NewTaggableIndex(index v1.ImageIndex) (TaggableIndex, error) {
 		return TaggableIndex{}, err
 	}
 	return TaggableIndex{
-		manifest:  manifest,
+		manifest:  manifestjson,
 		digest:    digest,
 		mediaType: mediaType,
 		size:      size,

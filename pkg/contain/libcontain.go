@@ -3,6 +3,7 @@ package contain
 import (
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/turbokube/contain/pkg/appender"
 	"github.com/turbokube/contain/pkg/layers"
 	"github.com/turbokube/contain/pkg/multiarch"
@@ -91,19 +92,19 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, 
 		return nil, err
 	}
 
-	each := func(b name.Digest, t name.Reference, tr *registry.RegistryConfig) (v1.Hash, int64, error) {
+	each := func(b name.Digest, t name.Reference, tr *registry.RegistryConfig) (mutate.IndexAddendum, error) {
 		a, err := appender.New(b, tr, t)
 		if err != nil {
 			zap.L().Error("appender", zap.Error(err))
-			return v1.Hash{}, 0, err
+			return mutate.IndexAddendum{}, err
 		}
 		// todo WithAnnotate?
 		r, err := a.Append(layers...)
 		if err != nil {
 			zap.L().Error("append", zap.Error(err))
-			return v1.Hash{}, 0, err
+			return mutate.IndexAddendum{}, err
 		}
-		return r.Hash, r.Pushed.Size, nil
+		return r.Pushed, nil
 	}
 
 	resultHash, err := index.PushWithAppend(each, buildOutputTag, tagRegistry)
