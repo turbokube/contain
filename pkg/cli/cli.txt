@@ -1,0 +1,4 @@
+cli may, unlike libcontain
+- read config from file system
+- read env, replace config values with env
+- write BuildOutput

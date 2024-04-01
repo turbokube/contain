@@ -24,7 +24,7 @@ contain --help
 
 
 
-skaffold $DEFAULT_REPO -f skaffold.test.yaml build --file-output=dist/test.artifacts $@
+skaffold $DEFAULT_REPO -f skaffold.test.yaml build --file-output=dist/test.artifacts --cache-artifacts=false $@
 
 skaffold -f skaffold.test.yaml test -a dist/test.artifacts
 
@@ -37,7 +37,7 @@ localtest1_arm64=$(crane --platform=linux/arm64 digest $localtest1)
 [ "$localtest1_amd64" != "$localtest1_arm64" ] && echo "warning: amd64 != arm64 ($localtest1_amd64 != $localtest1_arm64)" || echo "ok: $localtest1 is multi-arch"
 
 localtest1_base=$(crane manifest $localtest1 | jq -r '.annotations."org.opencontainers.image.base.name"')
-[ "$localtest1_base" = "index.docker.io/library/busybox:latest" ] || (echo "unexpected annotations $localtest1_base" && exit 1)
+[ "$localtest1_base" = "/library/busybox:latest" ] || (echo "unexpected annotations $localtest1_base" && exit 1)
 
 [ $(cat test/example-stdout.out | wc -l) -eq 1 ] || {
   echo "Error: stdout should be a single line, the image with digest. Got:"

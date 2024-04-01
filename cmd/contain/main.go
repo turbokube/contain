@@ -7,9 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/turbokube/contain/pkg/appender"
 	"github.com/turbokube/contain/pkg/contain"
-	"github.com/turbokube/contain/pkg/layers"
 	"github.com/turbokube/contain/pkg/run"
 	"github.com/turbokube/contain/pkg/schema"
 	schemav1 "github.com/turbokube/contain/pkg/schema/v1"
@@ -28,6 +27,7 @@ var (
 	base         string
 	runSelector  string
 	runNamespace string
+	fileOutput   string
 )
 
 func init() {
@@ -58,6 +58,11 @@ func init() {
 		"w",
 		false,
 		"watch layers sources and trigger build/run on change",
+	)
+	flag.StringVar(&fileOutput,
+		"file-output",
+		"",
+		"produce a builds JSON like Skaffold does",
 	)
 	flag.Usage = func() {
 		fmt.Fprintf(helpStream, "contain version: %s\n", BUILD)
@@ -116,7 +121,7 @@ func main() {
 				zap.String("abs", workdir),
 			)
 		}
-		chdir := contain.NewChdir(workdir)
+		chdir := appender.NewChdir(workdir)
 		defer chdir.Cleanup()
 	}
 
@@ -165,6 +170,8 @@ func main() {
 			if repoExists && rtagExists {
 				config.Tag = fmt.Sprintf("%s:%s", repo, rtag)
 				zap.L().Debug("read IMAGE_REPO and IMAGE_TAG env", zap.String("tag", config.Tag))
+			} else {
+				zap.L().Fatal("config tag must be set, or env IMAGE, or envs IMAGE_REPO and IMAGE_TAG")
 			}
 		}
 	}
@@ -196,30 +203,9 @@ func main() {
 
 	zap.L().Info("config", aboutConfig...)
 
-	layerBuilders := make([]layers.LayerBuilder, len(config.Layers))
-	for i, layerCfg := range config.Layers {
-		b, err := layers.NewLayerBuilder(layerCfg)
-		if err != nil {
-			zap.L().Fatal("Failed to get layer builder",
-				zap.Any("config", layerCfg),
-				zap.Error(err),
-			)
-		}
-		layerBuilders[i] = b
-	}
-
-	c, err := contain.NewContain(&config)
+	layers, err := contain.RunLayers(config)
 	if err != nil {
-		zap.L().Fatal("intialization", zap.Error(err))
-	}
-
-	layers := make([]v1.Layer, len(layerBuilders))
-	for i, builder := range layerBuilders {
-		layer, err := builder()
-		if err != nil {
-			zap.L().Fatal("layer builder invocation failed", zap.Error(err))
-		}
-		layers[i] = layer
+		zap.L().Fatal("layers", zap.Error(err))
 	}
 
 	if runSelector != "" {
@@ -240,13 +226,21 @@ func main() {
 		return
 	}
 
-	if config.Tag == "" {
-		zap.L().Fatal("append requires IMAGE env or config")
-	}
-	hash, err := c.Append(layers...)
+	buildOutput, err := contain.RunAppend(config, layers)
 	if err != nil {
 		zap.L().Fatal("append", zap.Error(err))
 	}
 
-	fmt.Printf("%s@%v\n", config.Tag, hash)
+	buildOutput.Print()
+
+	if fileOutput != "" {
+		f, err := os.OpenFile(fileOutput, os.O_RDWR|os.O_CREATE, 0755)
+		if err != nil {
+			zap.L().Fatal("file-output open", zap.String("path", fileOutput), zap.Error(err))
+		}
+		if buildOutput.WriteJSON(f) != nil {
+			zap.L().Fatal("file-output write", zap.String("path", fileOutput), zap.Error(err))
+		}
+	}
+
 }
