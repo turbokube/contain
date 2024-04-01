@@ -28,7 +28,7 @@ var cases = []testcases.Testcase{
 		RunConfig: func(config *testcases.TestInput, dir *testcases.TempDir) schema.ContainConfig {
 			dir.Write("root.txt", "r")
 			return schema.ContainConfig{
-				Base: "contain-test/multiarch-base:noattest",
+				Base: "contain-test/baseimage-multiarch1:noattest@sha256:3b9389d66071162baf5b06497b9168041bdaac4080581e294be6c13fcfdc6887",
 				Tag:  "contain-test/root:dot",
 				Layers: []schema.Layer{
 					{
@@ -44,7 +44,7 @@ var cases = []testcases.Testcase{
 		Expect: func(ref contain.Artifact, t *testing.T) {
 
 			// double check base image digest
-			d, err := crane.Digest(fmt.Sprintf("%s/contain-test/baseimage-multiarch1:noattest", testRegistry))
+			d, err := crane.Digest(fmt.Sprintf("%s/contain-test/baseimage-multiarch1:noattest@sha256:3b9389d66071162baf5b06497b9168041bdaac4080581e294be6c13fcfdc6887", testRegistry))
 			if err != nil {
 				t.Error(err)
 			}
@@ -214,7 +214,7 @@ func TestTestcases(t *testing.T) {
 			c := testcase.RunConfig(nil, dir)
 
 			// this output is helpful in combination with dagger output
-			fmt.Printf("\n#%d %s -> %s\n", i, c.Base, c.Tag)
+			t.Logf("\n#%d %s -> %s\n", i, c.Base, c.Tag)
 
 			c.Base = fmt.Sprintf("%s/%s", testRegistry, c.Base)
 			c.Tag = fmt.Sprintf("%s/%s", testRegistry, c.Tag)
@@ -229,19 +229,15 @@ func TestTestcases(t *testing.T) {
 			// Use separate invocations to simplify debugging
 
 			layers, err := contain.RunLayers(c)
-			if err != nil {
-				t.Errorf("layers %v", err)
-			}
+			Expect(err).NotTo(HaveOccurred())
 			zap.L().Debug("testcase layers", zap.Int("count", len(layers)))
 			buildOutput, err := contain.RunAppend(c, layers)
-			if err != nil {
-				t.Errorf("append %v", err)
-			}
+			Expect(err).NotTo(HaveOccurred())
 			if buildOutput == nil {
 				t.Fatalf("nil buildOutput")
 			}
 			if len(buildOutput.Builds) == 0 {
-				t.Errorf("Zero builds in buildOutput %v", buildOutput)
+				t.Fatalf("Zero builds in buildOutput: %v", buildOutput)
 			}
 			result := buildOutput.Builds[0]
 

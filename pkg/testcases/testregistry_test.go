@@ -64,7 +64,7 @@ func TestTestRegistry(t *testing.T) {
 		t.Error(err)
 	}
 	// ./testregistry-setup.sh
-	if digest != "sha256:c6dde17b43016c18361cf6b2db724b84312f074f9cb332438bc3908ac603f995" {
+	if digest != "sha256:f9f2106a04a339d282f1152f0be7c9ce921a0c01320de838cda364948de66bd4" {
 		t.Errorf("Unexpected base image digest %s", digest)
 	}
 	// https://github.com/google/go-containerregistry/blob/dbcd01c402b2f05bcf6fb988014c5f37e9b13559/pkg/v1/remote/descriptor.go#L97
