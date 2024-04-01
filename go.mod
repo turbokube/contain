@@ -1,6 +1,6 @@
 module github.com/turbokube/contain
 
-go 1.21
+go 1.22
 
 require (
 	github.com/distribution/reference v0.5.0

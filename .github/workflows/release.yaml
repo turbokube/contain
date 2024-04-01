@@ -16,8 +16,8 @@ jobs:
         - goarch: arm64
           goos: windows
     steps:
-    - uses: actions/checkout@v3
-    - uses: wangyoucao577/go-release-action@efb9406897e4eff1aa2c7142223b096aec90f267
+    - uses: actions/checkout@v4
+    - uses: wangyoucao577/go-release-action@b173bce0484dc9f34c585181e5db16bd8756a21e
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         goos: ${{ matrix.goos }}

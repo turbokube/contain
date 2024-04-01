@@ -264,6 +264,7 @@ func main() {
 }
 
 func releaseFromTag(ctx context.Context, client *github.Client, repository *github.Repository, tag *github.RepositoryTag) (*github.RepositoryRelease, error) {
+	// or "Create release" from the ...-button at https://github.com/turbokube/contain/tags
 	zap.L().Fatal("TODO publish manually", zap.String("at", *repository.TagsURL))
 	return nil, nil
 }
