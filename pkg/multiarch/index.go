@@ -3,6 +3,7 @@ package multiarch
 import (
 	"bytes"
 	"fmt"
+	"slices"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -48,6 +49,13 @@ func newToAppend(baseRef name.Digest, manifestMeta v1.Descriptor) ToAppend {
 		base: baseRef.Digest(manifestMeta.Digest.String()),
 		meta: pendingDigest,
 	}
+}
+
+func isPlatformIncluded(config schema.ContainConfig, platform *v1.Platform) bool {
+	if len(config.Platforms) == 0 {
+		return true
+	}
+	return slices.Contains(config.Platforms, platform.String())
 }
 
 type EachAppend func(baseRef name.Digest, tagRef name.Reference, tagRegistry *registry.RegistryConfig) (mutate.IndexAddendum, error)
@@ -99,6 +107,13 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 			zap.L().Info("skipping layer without platform",
 				zap.String("got", string(d.MediaType)),
 				zap.String("supported", string(d.MediaType)),
+			)
+			continue
+		}
+		if !isPlatformIncluded(config, d.Platform) {
+			zap.L().Info("skipping layer excluded by platforms config",
+				zap.String("platform", d.Platform.String()),
+				zap.Strings("config", config.Platforms),
 			)
 			continue
 		}

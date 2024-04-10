@@ -186,7 +186,7 @@ var cases = []testcases.Testcase{
 				Platforms: []string{"linux/amd64"},
 			}
 		},
-		ExpectDigest: "sha256:--todo--",
+		ExpectDigest: "sha256:5538ef19e5542affefc3dde5a6f61e3d16b40b3292c59c4d98b735e642a0a4ba--not-because-its-an-index",
 		Expect: func(ref contain.Artifact, t *testing.T) {
 
 		},
