@@ -15,6 +15,13 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	ReferenceTypeAnnotation   = "vnd.docker.reference.type"
+	ReferenceTypeAttestation  = "attestation-manifest"
+	AttestationPlatform       = "unknown/unknown"
+	ReferenceDigestAnnotation = "vnd.docker.reference.digest"
+)
+
 var noDigestYet = v1.Hash{}
 
 type IndexManifests struct {
@@ -78,7 +85,7 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 
 	index := &IndexManifests{
 		baseRef:  baseRef,
-		toAppend: make([]ToAppend, len(baseIndexManifest.Manifests)),
+		toAppend: make([]ToAppend, 0),
 	}
 
 	requireMediaType := types.OCIManifestSchema1
@@ -102,17 +109,25 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 			)
 			continue
 		}
-		// the only manifest entry type we support atm one that needs the contain mutation applied to it
-		index.toAppend[i] = newToAppend(index.baseRef, d)
+		if d.Annotations != nil {
+			if d.Platform.String() == AttestationPlatform && d.Annotations[ReferenceTypeAnnotation] == ReferenceTypeAttestation {
+				zap.L().Info("skipping attestation manifest",
+					zap.String("reference", d.Annotations[ReferenceDigestAnnotation]),
+				)
+				continue
+			}
+		}
+		base := newToAppend(index.baseRef, d)
 		// we probably don't need prototype or pending (child manifests) given the deprecations below
 		if index.prototype == nil {
-			index.prototype = &index.toAppend[i]
+			index.prototype = &base
 		}
-		index.toAppend[i].baseManifest, err = index.getChildManifest(index.baseRef, d, baseRegistry)
+		base.baseManifest, err = index.getChildManifest(index.baseRef, d, baseRegistry)
 		if err != nil {
 			zap.L().Error("index descriptor to manifest", zap.Error(err))
 			return nil, err
 		}
+		index.toAppend = append(index.toAppend, base)
 	}
 
 	if index.prototype == nil {
