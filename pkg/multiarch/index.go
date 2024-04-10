@@ -150,7 +150,12 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 		if err != nil {
 			return nil, fmt.Errorf("raw manifest for debugging %v", err)
 		}
-		return nil, fmt.Errorf("found no platform manifest of type %s in index %s %v", requireMediaType, baseRef, raw)
+		zap.L().Error("manifest search",
+			zap.Any("fetched", baseRef),
+			zap.Strings("wanted", config.Platforms),
+			zap.ByteString("raw", raw),
+		)
+		return nil, fmt.Errorf("found no platform manifest of type %s in index %s", requireMediaType, baseRef)
 	}
 
 	// reminder: we're stricter than necessary in early iterations, to help standardize on index types
@@ -159,14 +164,15 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 		if err != nil {
 			return nil, fmt.Errorf("raw manifest for debugging %v", err)
 		}
-		return nil, fmt.Errorf("found only one platform manifest of type %s in index %s %v", requireMediaType, baseRef, raw)
+		zap.L().Error("manifest", zap.ByteString("raw", raw))
+		return nil, fmt.Errorf("found only one platform manifest of type %s in index %s", requireMediaType, baseRef)
 	}
 
 	// found no clone method on v1.ImageIndex so let's reuse the fetched one
 	// (because empty.Index caused err at Push due to Image(Hash), i.e. manifest lookup, not implemented)
 	// If reusing the original index turns out to be a bad idea we could start from empty.Index
 	index.indexStart = mutate.RemoveManifests(baseIndex, func(desc v1.Descriptor) bool {
-		zap.L().Debug("clearing index",
+		zap.L().Debug("index entry clear",
 			zap.String("platform", desc.Platform.String()),
 			zap.String("digest", desc.Digest.String()),
 		)
@@ -313,6 +319,12 @@ func (m *IndexManifests) PushWithAppend(append EachAppend, tagRef name.Reference
 	if err != nil {
 		zap.L().Error("taggable", zap.Any("index", resultIndex), zap.Error(err))
 		return v1.Hash{}, err
+	}
+	for _, added := range manifests {
+		zap.L().Debug("index entry addded",
+			zap.String("platform", added.Platform.String()),
+			zap.String("digest", added.Digest.String()),
+		)
 	}
 	err = remote.Put(tagRef, resultTaggable, tagRegistry.CraneOptions.Remote...)
 	if err != nil {
