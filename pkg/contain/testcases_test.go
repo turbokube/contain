@@ -183,10 +183,33 @@ var cases = []testcases.Testcase{
 						},
 					},
 				},
+				Platforms: []string{"linux/amd64"},
 			}
 		},
-		ExpectDigest: "sha256:b1f5d00014e713ed568b951280056828eb5ab6a3a90c9a73b0ea8e1d0749dc90",
+		ExpectDigest: "sha256:--todo--",
 		Expect: func(ref contain.Artifact, t *testing.T) {
+
+		},
+	},
+	{
+		RunConfig: func(config *testcases.TestInput, dir *testcases.TempDir) schema.ContainConfig {
+			dir.Write("root.txt", "r")
+			return schema.ContainConfig{
+				Base: "contain-test/baseimage-multiarch1:latest@sha256:c5653a3316b7217a0e7e2adec8ba8d344ba0815367aad8bd5513c9f6ca85834d",
+				Tag:  "contain-test/root:dot",
+				Layers: []schema.Layer{
+					{
+						LocalDir: schema.LocalDir{
+							Path:          ".",
+							ContainerPath: "/1",
+						},
+					},
+				},
+			}
+		},
+		ExpectDigest: "sha256:--todo--",
+		Expect: func(ref contain.Artifact, t *testing.T) {
+
 		},
 	},
 }
