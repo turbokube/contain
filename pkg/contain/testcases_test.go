@@ -183,10 +183,34 @@ var cases = []testcases.Testcase{
 						},
 					},
 				},
+				Platforms: []string{"linux/amd64"},
+			}
+		},
+		ExpectDigest: "sha256:5538ef19e5542affefc3dde5a6f61e3d16b40b3292c59c4d98b735e642a0a4ba--not-because-its-an-index",
+		Expect: func(ref contain.Artifact, t *testing.T) {
+
+		},
+	},
+	{
+		RunConfig: func(config *testcases.TestInput, dir *testcases.TempDir) schema.ContainConfig {
+			dir.Write("root.txt", "r")
+			return schema.ContainConfig{
+				// Base here has attestation layers, they should not be appended to
+				Base: "contain-test/baseimage-multiarch1:latest@sha256:c5653a3316b7217a0e7e2adec8ba8d344ba0815367aad8bd5513c9f6ca85834d",
+				Tag:  "contain-test/root:dot",
+				Layers: []schema.Layer{
+					{
+						LocalDir: schema.LocalDir{
+							Path:          ".",
+							ContainerPath: "/1",
+						},
+					},
+				},
 			}
 		},
 		ExpectDigest: "sha256:b1f5d00014e713ed568b951280056828eb5ab6a3a90c9a73b0ea8e1d0749dc90",
 		Expect: func(ref contain.Artifact, t *testing.T) {
+
 		},
 	},
 }

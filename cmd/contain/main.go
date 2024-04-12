@@ -16,6 +16,10 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+const (
+	envPlatforms = "PLATFORMS"
+)
+
 var (
 	BUILD        = "development"
 	helpStream   = os.Stderr
@@ -177,10 +181,10 @@ func main() {
 	}
 
 	if len(config.Platforms) == 0 {
-		platforms, exists := os.LookupEnv("PLATFORMS")
+		platforms, exists := os.LookupEnv(envPlatforms)
 		if exists {
 			p := strings.Split(platforms, ",")
-			zap.L().Debug("read PLATFORMS env", zap.Strings("platforms", p))
+			zap.L().Debug("env", zap.String("name", envPlatforms), zap.Strings("platforms", p))
 			config.Platforms = p
 		}
 	}
