@@ -9,7 +9,7 @@ import (
 	schema "github.com/turbokube/contain/pkg/schema/v1"
 )
 
-func TestNewPlatformsMatcher(t *testing.T) {
+func TestMatchPlatformsForAppend(t *testing.T) {
 	RegisterTestingT(t)
 	c := schema.ContainConfig{
 		Platforms: []string{
@@ -17,7 +17,7 @@ func TestNewPlatformsMatcher(t *testing.T) {
 			"linux/arm64/v8",
 		},
 	}
-	m, err := multiarch.NewPlatformsMatcher(c)
+	m, err := multiarch.MatchPlatformsForAppend(c)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(m(v1.Descriptor{
 		Platform: &v1.Platform{
@@ -52,13 +52,14 @@ func TestNewPlatformsMatcher(t *testing.T) {
 			OS:           "linux",
 			Architecture: "arm64",
 		},
+		// we don't know if we can specialize the base image's platform
 	})).To(BeFalse())
 	c2 := schema.ContainConfig{
 		Platforms: []string{
 			"linux/arm64",
 		},
 	}
-	m2, err := multiarch.NewPlatformsMatcher(c2)
+	m2, err := multiarch.MatchPlatformsForAppend(c2)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(m2(v1.Descriptor{
 		Platform: &v1.Platform{
@@ -73,5 +74,6 @@ func TestNewPlatformsMatcher(t *testing.T) {
 			Architecture: "arm64",
 			Variant:      "v8",
 		},
+		// we don't know if we can generalize the base image's platform
 	})).To(BeFalse())
 }

@@ -3,7 +3,6 @@ package multiarch
 import (
 	"bytes"
 	"fmt"
-	"slices"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -51,16 +50,14 @@ func newToAppend(baseRef name.Digest, manifestMeta v1.Descriptor) ToAppend {
 	}
 }
 
-func isPlatformIncluded(config schema.ContainConfig, platform *v1.Platform) bool {
-	if len(config.Platforms) == 0 {
-		return true
-	}
-	return slices.Contains(config.Platforms, platform.String())
-}
-
 type EachAppend func(baseRef name.Digest, tagRef name.Reference, tagRegistry *registry.RegistryConfig) (mutate.IndexAddendum, error)
 
 func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.RegistryConfig) (*IndexManifests, error) {
+	matchPlatforms, err := MatchPlatformsForAppend(config)
+	if err != nil {
+		return nil, err
+	}
+
 	baseParsed, err := name.ParseReference(config.Base)
 	if err != nil {
 		return nil, err
@@ -96,6 +93,7 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 		toAppend: make([]ToAppend, 0),
 	}
 
+	basePlatforms := make([]string, 0)
 	requireMediaType := types.OCIManifestSchema1
 	for i, d := range baseIndexManifest.Manifests {
 		zap.L().Debug("child descriptor",
@@ -109,8 +107,10 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 				zap.String("supported", string(d.MediaType)),
 			)
 			continue
+		} else {
+			basePlatforms = append(basePlatforms, d.Platform.String())
 		}
-		if !isPlatformIncluded(config, d.Platform) {
+		if !matchPlatforms(d) {
 			zap.L().Info("skipping layer excluded by platforms config",
 				zap.String("platform", d.Platform.String()),
 				zap.Strings("config", config.Platforms),
@@ -155,7 +155,7 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 			zap.Strings("wanted", config.Platforms),
 			zap.ByteString("raw", raw),
 		)
-		return nil, fmt.Errorf("found no platform manifest of type %s in index %s", requireMediaType, baseRef)
+		return nil, fmt.Errorf("found no platform manifest of type %s in index %s %v", requireMediaType, baseRef, basePlatforms)
 	}
 
 	// reminder: we're stricter than necessary in early iterations, to help standardize on index types
@@ -165,7 +165,7 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 			return nil, fmt.Errorf("raw manifest for debugging %v", err)
 		}
 		zap.L().Error("manifest", zap.ByteString("raw", raw))
-		return nil, fmt.Errorf("found only one platform manifest of type %s in index %s", requireMediaType, baseRef)
+		return nil, fmt.Errorf("found only one platform manifest of type %s in index %s %v", requireMediaType, baseRef, basePlatforms)
 	}
 
 	// found no clone method on v1.ImageIndex so let's reuse the fetched one

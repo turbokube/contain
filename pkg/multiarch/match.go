@@ -7,7 +7,13 @@ import (
 	"go.uber.org/zap"
 )
 
-func NewPlatformsMatcher(config schema.ContainConfig) (match.Matcher, error) {
+// match has utils for matching index member descriptors based on config
+
+// MatchPlatformsForAppend matches only on platform equality
+// which is stricter than platform at runtime image pull because
+// we don't want to widen the scope of a base image
+// (config could allow different matching as opt-in, maybe with v1.Platform.Satisfies)
+func MatchPlatformsForAppend(config schema.ContainConfig) (match.Matcher, error) {
 	count := len(config.Platforms)
 	if count == 0 {
 		return func(desc v1.Descriptor) bool {
