@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/turbokube/contain/pkg/appender"
@@ -32,6 +33,7 @@ var (
 	runSelector  string
 	runNamespace string
 	fileOutput   string
+	platformsEnv bool
 )
 
 func init() {
@@ -67,6 +69,11 @@ func init() {
 		"file-output",
 		"",
 		"produce a builds JSON like Skaffold does",
+	)
+	flag.BoolVar(&platformsEnv,
+		"platforms-env-require",
+		false,
+		fmt.Sprintf("requires env %s to be set, unless config specifies platforms", envPlatforms),
 	)
 	flag.Usage = func() {
 		fmt.Fprintf(helpStream, "contain version: %s\n", BUILD)
@@ -180,13 +187,18 @@ func main() {
 		}
 	}
 
-	if len(config.Platforms) == 0 {
-		platforms, exists := os.LookupEnv(envPlatforms)
-		if exists {
-			p := strings.Split(platforms, ",")
-			zap.L().Debug("env", zap.String("name", envPlatforms), zap.Strings("platforms", p))
+	platforms, exists := os.LookupEnv(envPlatforms)
+	if exists {
+		p := strings.Split(platforms, ",")
+		zap.L().Debug("env", zap.String("name", envPlatforms), zap.Strings("platforms", p))
+		if len(config.Platforms) == 0 {
 			config.Platforms = p
+		} else if !slices.Equal(config.Platforms, p) {
+			zap.L().Info("platforms not equal, config kept", zap.String("env", platforms), zap.Strings("config", config.Platforms))
 		}
+	} else if platformsEnv {
+		fmt.Fprintf(os.Stderr, "%s env required but not found", envPlatforms)
+		os.Exit(1)
 	}
 
 	var aboutConfig = make([]zap.Field, 0)
