@@ -3,6 +3,7 @@ layers:
 - localDir:
     path: localdir1
     containerPath: /filemode
+  layerAttributes:
     uid: 65532
     gid: 65534
     mode: 0766
