@@ -27,12 +27,14 @@ type SyncTarget struct {
 }
 
 func NewContainersync(config *schema.ContainConfig) (*Containersync, error) {
-	return &Containersync{
+	c := &Containersync{
 		config: config,
 		matchContainer: &MatchContainer{
 			imagePrefix: config.Base,
 		},
-	}, nil
+	}
+	zap.L().Debug("imagePrefix", zap.String("base", config.Base))
+	return c, nil
 }
 
 func (c *Containersync) Run(layers ...v1.Layer) (*SyncTarget, error) {
@@ -102,7 +104,10 @@ func (c *Containersync) MatchPod(pod Runpod) *RunpodContainerStatus {
 			}
 			zap.L().Debug("container match", cfields...)
 			if container != nil {
-				zap.L().Error("multiple containers match", zap.String("previous", container.Name))
+				zap.L().Error("multiple containers match",
+					zap.String("prefix", c.matchContainer.imagePrefix),
+					zap.String("previous", container.Name),
+				)
 				return nil
 			}
 			avoidForLoopReuse := cs

@@ -53,7 +53,7 @@ type RunpodContainerStatusStateTerminated struct {
 
 type RunpodContainerStatus struct {
 	Name         string                     `json:"name"`
-	Image        string                     `json:"image"`
+	Image        string                     `json:"imageID"`
 	Ready        bool                       `json:"ready"`
 	RestartCount int                        `json:"restartCount"`
 	Started      bool                       `json:"started"`
