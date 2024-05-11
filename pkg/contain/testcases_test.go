@@ -214,7 +214,15 @@ var cases = []testcases.Testcase{
 		},
 		ExpectDigest: "sha256:b1f5d00014e713ed568b951280056828eb5ab6a3a90c9a73b0ea8e1d0749dc90",
 		Expect: func(ref contain.Artifact, t *testing.T) {
-
+			img, err := remote.Get(ref.Reference(), testCraneOptions.Remote...)
+			Expect(err).To(BeNil())
+			Expect(img.MediaType.IsIndex()).To(BeTrue())
+			index, err := img.ImageIndex()
+			Expect(err).To(BeNil())
+			indexManifest, err := index.IndexManifest()
+			Expect(err).To(BeNil())
+			// attestation manifests are currently not supported and are thus dropped
+			Expect(len(indexManifest.Manifests)).To(Equal(2))
 		},
 	},
 }
