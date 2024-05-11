@@ -186,9 +186,13 @@ var cases = []testcases.Testcase{
 				Platforms: []string{"linux/amd64"},
 			}
 		},
-		ExpectDigest: "sha256:5538ef19e5542affefc3dde5a6f61e3d16b40b3292c59c4d98b735e642a0a4ba--not-because-its-an-index",
+		ExpectDigest: "sha256:dda9e675d63ac133fd541c076f3ba673beb70c3eee58dc603970929cea7a20b1",
 		Expect: func(ref contain.Artifact, t *testing.T) {
-
+			img, err := remote.Get(ref.Reference(), testCraneOptions.Remote...)
+			Expect(err).To(BeNil())
+			Expect(img.MediaType.IsIndex()).NotTo(BeTrue())
+			Expect(img.MediaType.IsImage()).To(BeTrue())
+			Expect(string(img.MediaType)).To(Equal("application/vnd.oci.image.manifest.v1+json"))
 		},
 	},
 	{

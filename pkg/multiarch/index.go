@@ -74,6 +74,8 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 		return nil, err
 	}
 
+	// We parse index for single-platform builds as well, to make platform handling explicit.
+	// To add support for non-index bases we'll probably use the default go-containerregistry behavior instead.
 	if base.MediaType != types.OCIImageIndex {
 		return nil, fmt.Errorf("currently only supports OCI index, got %s for %s", base.MediaType, config.Base)
 	}
@@ -223,6 +225,16 @@ func (m *IndexManifests) getChildManifest(baseRef name.Digest, manifest v1.Descr
 // Deprecated: see EachAppend
 func (m *IndexManifests) GetPrototypeBase() (name.Digest, error) {
 	return m.prototype.base, nil
+}
+
+// SizeAppend is the number of manifests we'd append to
+// in constrast to for example SizeBase = original size, SizeResult = in the index that will be pushed
+func (m *IndexManifests) SizeAppend() int {
+	return len(m.toAppend)
+}
+
+func (m *IndexManifests) BaseRef() name.Digest {
+	return m.baseRef
 }
 
 // PushIndex takes the AppendResult of the prototype contain
