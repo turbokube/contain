@@ -1,6 +1,8 @@
 package contain
 
 import (
+	"fmt"
+
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
@@ -107,10 +109,29 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, 
 		return r.Pushed, nil
 	}
 
-	resultHash, err := index.PushWithAppend(each, buildOutputTag, tagRegistry)
-	if err != nil {
-		zap.L().Error("index push", zap.Error(err))
-		return nil, err
+	var resultHash v1.Hash
+
+	if index.SizeAppend() > 1 {
+		resultHash, err = index.PushWithAppend(each, buildOutputTag, tagRegistry)
+		if err != nil {
+			zap.L().Error("index push", zap.Error(err))
+			return nil, err
+		}
+	} else {
+		if len(config.Platforms) > index.SizeAppend() {
+			return nil, fmt.Errorf("found %d index manifests to append to, config has %d platforms", index.SizeAppend(), len(config.Platforms))
+		}
+		pushed, err := each(index.BaseRef(), buildOutputTag, tagRegistry)
+		if err != nil {
+			zap.L().Error("single image push", zap.Error(err))
+			return nil, err
+		}
+		resultHash, err = pushed.Add.Digest()
+		if err != nil {
+			zap.L().Error("single image push image digest", zap.Error(err))
+			return nil, err
+		}
+		zap.L().Info("single platform", zap.String("tag", buildOutputTag.String()), zap.String("hash", resultHash.String()))
 	}
 
 	// todo multi-arch index from prototype result to result index
@@ -118,7 +139,7 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, 
 
 	buildOutput, err := NewBuildOutput(buildOutputTag.String(), resultHash)
 	if err != nil {
-		zap.L().Fatal("buildOutput", zap.Error(err))
+		zap.L().Error("buildOutput", zap.Error(err))
 		return nil, err
 	}
 
