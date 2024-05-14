@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/GoogleContainerTools/skaffold/v2/pkg/skaffold/tags"
 	"github.com/spf13/afero"
 	v1 "github.com/turbokube/contain/pkg/schema/v1"
 	"go.uber.org/zap"
@@ -32,7 +33,13 @@ func ParseConfig(filename string) (v1.ContainConfig, error) {
 	// if err != nil {
 	// 	return nil, fmt.Errorf("unable to re-marshal YAML without dotted keys: %w", err)
 	// }
-	return parseConfig(buf)
+	config, err := parseConfig(buf)
+	if err != nil {
+		return noconfig, err
+	}
+	tags.ApplyTemplates(config)
+	// tags.MakeFilePathsAbsolute(config)
+	return config, nil
 }
 
 func parseConfig(buf []byte) (v1.ContainConfig, error) {
