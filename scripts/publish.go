@@ -205,7 +205,7 @@ func main() {
 		}
 
 		p := BinPackage{
-			Name:        fmt.Sprintf("@turbokube/contain-%s-%s", o, cpu),
+			Name:        fmt.Sprintf("contain-%s-%s", o, cpu),
 			Version:     version,
 			Homepage:    parent.Homepage,
 			Description: fmt.Sprintf("Platform specific (%s-%s) binary package for %s", o, cpu, parent.Name),
