@@ -34,7 +34,7 @@ type ContainConfigSync struct {
 type Layer struct {
 	Attributes LayerAttributes `yaml:"layerAttributes,omitempty"`
 	// exactly one of the following
-	LocalDir LocalDir `yaml:"localDir,omitempty" skaffold:"template"`
+	LocalDir LocalDir `yaml:"localDir,omitempty"`
 }
 
 type LayerAttributes struct {
