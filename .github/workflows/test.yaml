@@ -4,7 +4,7 @@ on:
   pull_request: {}
 
 jobs:
-  docker:
+  test:
     runs-on: ubuntu-latest
     steps:
     -
@@ -14,28 +14,19 @@ jobs:
       name: Set up QEMU
       uses: docker/setup-qemu-action@v3
     -
-      name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-    -
       uses: actions/setup-go@v5
       with:
         go-version: 1.22
     -
       uses: imjasonh/setup-crane@v0.3
     -
-      name: Install skaffold
-      uses: jaxxstorm/action-install-gh-release@v1.12.0
+      uses: nolar/setup-k3d-k3s@v1.0.9
       with:
-        repo: GoogleContainerTools/skaffold
-        tag: v2.12.0
-        cache: enable
+        skip-creation: true
     -
-      name: Install k3d
-      uses: jaxxstorm/action-install-gh-release@v1.12.0
+      uses: heypigeonhq/setup-skaffold@v1.1.0
       with:
-        repo: k3d-io/k3d
-        tag: v5.6.3
-        cache: enable
+        version: "2.12.0"
     -
       name: Run test suites
       id: test-run
