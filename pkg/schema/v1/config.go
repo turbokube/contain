@@ -44,7 +44,7 @@ type LayerAttributes struct {
 
 	// Mode bits to use on files, must be a value between 0 and 0777.
 	// YAML accepts both octal and decimal values, JSON requires decimal values for mode bits.
-	FileMode int32 `yaml:"fileMode,omitempty"`
+	FileMode int32 `yaml:"mode,omitempty"`
 }
 
 // LocalDir is a directory structure that should be appended as-is to base
