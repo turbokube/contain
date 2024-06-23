@@ -36,8 +36,9 @@ localtest1_arm64=$(crane --platform=linux/arm64 digest $localtest1)
 [ -z "$localtest1_arm64" ] && echo "arm64 architecture missing for $localtest1" && exit 1
 [ "$localtest1_amd64" != "$localtest1_arm64" ] && echo "warning: amd64 != arm64 ($localtest1_amd64 != $localtest1_arm64)" || echo "ok: $localtest1 is multi-arch"
 
-localtest1_base=$(crane manifest $localtest1 | jq -r '.annotations."org.opencontainers.image.base.name"')
-[ "$localtest1_base" = "/library/busybox:latest" ] || (echo "unexpected annotations $localtest1_base" && exit 1)
+# The original annotations mechanism caused build non-reproducibility due to inclusion of varying registry hostname
+# localtest1_base=$(crane manifest $localtest1 | jq -r '.annotations."org.opencontainers.image.base.name"')
+# [ "$localtest1_base" = "/library/busybox:latest" ] || (echo "unexpected annotations $localtest1_base" && exit 1)
 
 [ $(cat test/example-stdout.out | wc -l) -eq 1 ] || {
   echo "Error: stdout should be a single line, the image with digest. Got:"

@@ -147,6 +147,7 @@ func main() {
 		// TODO we should probably distinguish between different types of config errors first
 		zap.L().Debug("config parse failed, expected if invoked with -b",
 			zap.Error(err),
+			zap.String("path", configPath),
 			zap.String("-b", base),
 		)
 		if base == "" {

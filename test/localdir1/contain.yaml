@@ -6,5 +6,4 @@ layers:
     ignore:
     - contain.yaml
     - test.yaml
-# Should not be needed because we have skaffold's $IMAGE tag
-#tag: localhost:22500/library/localdir1
+tag: "{{.IMAGE}}"

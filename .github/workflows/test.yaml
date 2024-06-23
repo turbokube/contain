@@ -1,0 +1,75 @@
+name: images
+
+on:
+  pull_request: {}
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    -
+      name: Checkout
+      uses: actions/checkout@v4
+    -
+      name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+    -
+      uses: actions/setup-go@v5
+      with:
+        go-version: 1.22
+    -
+      uses: imjasonh/setup-crane@v0.3
+    -
+      uses: nolar/setup-k3d-k3s@v1.0.9
+      with:
+        skip-creation: true
+    -
+      uses: heypigeonhq/setup-skaffold@v1.1.0
+      with:
+        version: 2.12.0
+    -
+      uses: freenet-actions/setup-container-structure-test@v4.0.1
+      with:
+        version: 1.18.1
+    -
+      name: Run test suites
+      id: test-run
+      run: |
+        ./test.sh
+      continue-on-error: true
+    -
+      name: Read test result
+      id: test-result
+      run: echo "TEST_RESULT=$?" >> $GITHUB_ENV
+    -
+      name: Label PR as Passed
+      if: env.TEST_RESULT == '0'
+      run: |
+        gh pr edit ${{ github.event.pull_request.number }} --add-label "test_passed"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    -
+      name: Remove Passed Label if exists
+      if: env.TEST_RESULT != '0'
+      run: |
+        gh pr edit ${{ github.event.pull_request.number }} --remove-label "test_passed"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    -
+      name: Label PR as Failed
+      if: env.TEST_RESULT != '0'
+      run: |
+        gh pr edit ${{ github.event.pull_request.number }} --add-label "test_failed"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    -
+      name: Remove Failed Label if exists
+      if: env.TEST_RESULT == '0'
+      run: |
+        gh pr edit ${{ github.event.pull_request.number }} --remove-label "test_failed"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

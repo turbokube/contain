@@ -5,9 +5,9 @@ import "time"
 type ContainConfig struct {
 	Status ContainConfigStatus
 	// Base is the base image reference
-	Base string `yaml:"base"`
+	Base string `yaml:"base" skaffold:"template"`
 	// Tag is the result reference to be pushed
-	Tag       string   `yaml:"tag"`
+	Tag       string   `yaml:"tag" skaffold:"template"`
 	Platforms []string `yaml:"platforms"`
 	Layers    []Layer  `yaml:"layers,omitempty"`
 	Sync      ContainConfigSync
@@ -44,15 +44,15 @@ type LayerAttributes struct {
 
 	// Mode bits to use on files, must be a value between 0 and 0777.
 	// YAML accepts both octal and decimal values, JSON requires decimal values for mode bits.
-	FileMode int32 `yaml:"fileMode,omitempty"`
+	FileMode int32 `yaml:"mode,omitempty"`
 }
 
 // LocalDir is a directory structure that should be appended as-is to base
 // with an optional path prefix, for example ./target/app to /app
 type LocalDir struct {
-	Path          string   `yaml:"path"`
-	ContainerPath string   `yaml:"containerPath,omitempty"`
-	Ignore        []string `yaml:"ignore,omitempty"`
+	Path          string   `yaml:"path" skaffold:"filepath,template"`
+	ContainerPath string   `yaml:"containerPath,omitempty" skaffold:"template"`
+	Ignore        []string `yaml:"ignore,omitempty" skaffold:"template"`
 	MaxFiles      int      `yaml:"maxFiles,omitempty"`
-	MaxSize       string   `yaml:"maxSize,omitempty"`
+	MaxSize       string   `yaml:"maxSize,omitempty" skaffold:"template"`
 }
