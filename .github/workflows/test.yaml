@@ -23,9 +23,19 @@ jobs:
     -
       uses: imjasonh/setup-crane@v0.3
     -
-      id: setup-k3d
-      run: |
-        go install github.com/k3d-io/k3d/v5@v5.6.3
+      name: Install skaffold
+      uses: jaxxstorm/action-install-gh-release@v1.12.0
+      with:
+        repo: GoogleContainerTools/skaffold
+        tag: v2.12.0
+        cache: enable
+    -
+      name: Install k3d
+      uses: jaxxstorm/action-install-gh-release@v1.12.0
+      with:
+        repo: k3d-io/k3d
+        tag: v5.6.3
+        cache: enable
     -
       name: Run test suites
       id: test-run
