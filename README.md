@@ -122,3 +122,7 @@ In practice Contain will run append and push to the first platform,
 then derive the layers to append from that one.
 
 Currently Contain can't update attestations. Those index entries are therefore dropped.
+
+## Configuration
+
+Contain supports template variables in config yaml using the framework from [Skaffold](https://skaffold.dev/docs/environment/templating/).
