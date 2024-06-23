@@ -39,12 +39,12 @@ type Layer struct {
 
 type LayerAttributes struct {
 	// generic, supported for applicable layer types
-	Uid uint16 `yaml:"uid,omitempty" skaffold:"template"`
-	Gid uint16 `yaml:"gid,omitempty" skaffold:"template"`
+	Uid uint16 `yaml:"uid,omitempty"`
+	Gid uint16 `yaml:"gid,omitempty"`
 
 	// Mode bits to use on files, must be a value between 0 and 0777.
 	// YAML accepts both octal and decimal values, JSON requires decimal values for mode bits.
-	FileMode int32 `yaml:"fileMode,omitempty" skaffold:"template"`
+	FileMode int32 `yaml:"fileMode,omitempty"`
 }
 
 // LocalDir is a directory structure that should be appended as-is to base
@@ -53,6 +53,6 @@ type LocalDir struct {
 	Path          string   `yaml:"path" skaffold:"filepath,template"`
 	ContainerPath string   `yaml:"containerPath,omitempty" skaffold:"template"`
 	Ignore        []string `yaml:"ignore,omitempty" skaffold:"template"`
-	MaxFiles      int      `yaml:"maxFiles,omitempty" skaffold:"template"`
+	MaxFiles      int      `yaml:"maxFiles,omitempty"`
 	MaxSize       string   `yaml:"maxSize,omitempty" skaffold:"template"`
 }
