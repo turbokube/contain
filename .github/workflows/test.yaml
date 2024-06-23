@@ -1,0 +1,66 @@
+name: images
+
+on:
+  pull_request: {}
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+    -
+      name: Checkout
+      uses: actions/checkout@v4
+    -
+      name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+    -
+      name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    -
+      uses: actions/setup-go@v5
+      with:
+        go-version: 1.22
+    -
+      uses: imjasonh/setup-crane@v0.3
+    -
+      id: setup-k3d
+      run: |
+        go install github.com/k3d-io/k3d/v5@v5.6.3
+    -
+      name: Run test suites
+      id: test-run
+      run: |
+        ./test.sh
+      continue-on-error: true
+    -
+      name: Read test result
+      id: test-result
+      run: echo "TEST_RESULT=$?" >> $GITHUB_ENV
+    -
+      name: Label PR as Passed
+      if: env.TEST_RESULT == '0'
+      run: |
+        gh pr edit ${{ github.event.pull_request.number }} --add-label "test_passed"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    -
+      name: Remove Passed Label if exists
+      if: env.TEST_RESULT != '0'
+      run: |
+        gh pr edit ${{ github.event.pull_request.number }} --remove-label "test_passed"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    -
+      name: Label PR as Failed
+      if: env.TEST_RESULT != '0'
+      run: |
+        gh pr edit ${{ github.event.pull_request.number }} --add-label "test_failed"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    -
+      name: Remove Failed Label if exists
+      if: env.TEST_RESULT == '0'
+      run: |
+        gh pr edit ${{ github.event.pull_request.number }} --remove-label "test_failed"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
