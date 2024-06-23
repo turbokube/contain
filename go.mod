@@ -4,8 +4,8 @@ go 1.22
 
 require (
 	github.com/GoogleContainerTools/skaffold/v2 v2.12.0
-	github.com/distribution/reference v0.5.0
-	github.com/google/go-containerregistry v0.19.1
+	github.com/distribution/reference v0.6.0
+	github.com/google/go-containerregistry v0.19.2
 	github.com/moby/patternmatcher v0.6.0
 	github.com/opencontainers/image-spec v1.1.0
 	github.com/spf13/afero v1.11.0
