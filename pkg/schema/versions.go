@@ -6,7 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -29,6 +29,12 @@ func ParseConfig(filename string) (v1.ContainConfig, error) {
 	if err != nil {
 		return noconfig, fmt.Errorf("read contain config: %w", err)
 	}
+	return Parse(buf)
+}
+
+func Parse(buf []byte) (v1.ContainConfig, error) {
+	noconfig := v1.ContainConfig{}
+	// https://github.com/GoogleContainerTools/skaffold/blob/v2.12.0/pkg/skaffold/schema/versions.go#L231
 	// buf, err = removeYamlAnchors(buf)
 	// if err != nil {
 	// 	return nil, fmt.Errorf("unable to re-marshal YAML without dotted keys: %w", err)
@@ -37,7 +43,9 @@ func ParseConfig(filename string) (v1.ContainConfig, error) {
 	if err != nil {
 		return noconfig, err
 	}
-	tags.ApplyTemplates(config)
+	if err = tags.ApplyTemplates(&config); err != nil {
+		return noconfig, fmt.Errorf("apply templates: %w\n%s", err, string(buf))
+	}
 	// tags.MakeFilePathsAbsolute(config)
 	return config, nil
 }
@@ -47,7 +55,14 @@ func parseConfig(buf []byte) (v1.ContainConfig, error) {
 	decoder := yaml.NewDecoder(b)
 	decoder.KnownFields(true)
 	var config v1.ContainConfig
-	decoder.Decode(&config)
+	err := decoder.Decode(&config)
+	if err == io.EOF {
+		// skaffold handles multiple configs: https://github.com/GoogleContainerTools/skaffold/blob/v2.12.0/pkg/skaffold/schema/versions.go#L320
+		return config, fmt.Errorf("config EOF: %w", err)
+	}
+	if err != nil {
+		return config, fmt.Errorf("unable to parse config: %w", err)
+	}
 	config.Status.Sha256 = fmt.Sprintf("%x", sha256.Sum256(buf))
 	config.Status.Md5 = fmt.Sprintf("%x", md5.Sum(buf))
 	return config, nil
@@ -62,7 +77,7 @@ func ReadConfiguration(filePath string) ([]byte, error) {
 	case filePath == "-":
 		if len(stdin) == 0 {
 			var err error
-			stdin, err = ioutil.ReadAll(os.Stdin)
+			stdin, err = io.ReadAll(os.Stdin)
 			if err != nil {
 				return []byte{}, err
 			}
@@ -89,15 +104,4 @@ func ReadConfiguration(filePath string) ([]byte, error) {
 
 		return contents, err
 	}
-}
-
-func ReadFile(filename string) ([]byte, error) {
-	if !filepath.IsAbs(filename) {
-		dir, err := os.Getwd()
-		if err != nil {
-			return []byte{}, err
-		}
-		filename = filepath.Join(dir, filename)
-	}
-	return afero.ReadFile(Fs, filename)
 }
