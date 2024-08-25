@@ -48,28 +48,28 @@ jobs:
       run: echo "TEST_RESULT=$?" >> $GITHUB_ENV
     -
       name: Label PR as Passed
-      if: env.TEST_RESULT == '0'
+      if: env.TEST_RESULT == '0' && github.event_name == 'pull_request'
       run: |
         gh pr edit ${{ github.event.pull_request.number }} --add-label "test_passed"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     -
       name: Remove Passed Label if exists
-      if: env.TEST_RESULT != '0'
+      if: env.TEST_RESULT != '0' && github.event_name == 'pull_request'
       run: |
         gh pr edit ${{ github.event.pull_request.number }} --remove-label "test_passed"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     -
       name: Label PR as Failed
-      if: env.TEST_RESULT != '0'
+      if: env.TEST_RESULT != '0' && github.event_name == 'pull_request'
       run: |
         gh pr edit ${{ github.event.pull_request.number }} --add-label "test_failed"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     -
       name: Remove Failed Label if exists
-      if: env.TEST_RESULT == '0'
+      if: env.TEST_RESULT == '0' && github.event_name == 'pull_request'
       run: |
         gh pr edit ${{ github.event.pull_request.number }} --remove-label "test_failed"
       env:
