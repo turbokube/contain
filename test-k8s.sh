@@ -9,6 +9,16 @@ k() {
   kubectl $@
 }
 
+cleanup() {
+  k3d cluster delete turbokube-test-contain
+}
+
+fail() {
+  kubectl get pods -o json > test/k8s-pods-nodejs-json.out
+  cleanup
+  exit 1
+}
+
 k3d cluster create turbokube-test-contain
 until k get pods 2>/dev/null; do
   echo "==> Waiting for cluster to respond ..."
@@ -29,7 +39,5 @@ image=$(yq e '.spec.template.spec.containers[0].image' test/run-nodejs/nodejs-wa
 # TODO unreachable cluster warrants retry: https://github.com/turbokube/contain/blob/v0.2.2/pkg/run/containersync.go#L95
 sleep 1
 kubectl get pods -o json > test/k8s-pods-json1.out
-(cd test/run-nodejs/app/; contain -x -b $image -r turbokube.dev/contain-run=nodejs) || kubectl get pods -o json > test/k8s-pods-nodejs-json.out
+(cd test/run-nodejs/app/; contain -x -b $image -r turbokube.dev/contain-run=nodejs) || fail
 # TODO contain could return a namespace+pod+container identifier upon successful sync
-
-k3d cluster delete turbokube-test-contain
