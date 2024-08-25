@@ -1,6 +1,7 @@
 name: images
 
 on:
+  push: {}
   pull_request: {}
 
 permissions:
@@ -30,11 +31,11 @@ jobs:
     -
       uses: heypigeonhq/setup-skaffold@v1.1.0
       with:
-        version: 2.12.0
+        version: 2.13.2
     -
       uses: freenet-actions/setup-container-structure-test@v4.0.1
       with:
-        version: 1.18.1
+        version: 1.19.1
     -
       name: Run test suites
       id: test-run
