@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://github.com/GoogleContainerTools/skaffold/raw/v2.13.2/docs-v2/content/en/schemas/v3.json
 apiVersion: skaffold/v3
 kind: Config
 build:
@@ -74,6 +75,10 @@ build:
     context: ./test
     custom:
       buildCommand: contain -x -c filemode.contain.yaml
+  - image: onefile
+    context: ./test
+    custom:
+      buildCommand: contain -x -c onefile.contain.yaml
 
 test:
 - image: localdir1
@@ -106,3 +111,6 @@ test:
 - image: filemode
   structureTests:
   - ./test/filemode.test.yaml
+- image: onefile
+  structureTests:
+  - ./test/onefile.test.yaml

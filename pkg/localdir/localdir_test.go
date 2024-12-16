@@ -5,6 +5,7 @@ import (
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/moby/patternmatcher"
+	. "github.com/onsi/gomega"
 	"github.com/turbokube/contain/pkg/localdir"
 	schema "github.com/turbokube/contain/pkg/schema/v1"
 	"go.uber.org/zap"
@@ -96,4 +97,16 @@ func TestFromFilesystemDir1(t *testing.T) {
 		Path: "./testdata/dir2",
 	}, "sha256:b9ef15618528091f7ead6945df474d60cb2930c22abac1267a6759d8e6d68e70", t)
 
+}
+
+func TestPathMapperAsIs(t *testing.T) {
+	RegisterTestingT(t)
+	mapper := localdir.NewPathMapperAsIs()
+	Expect(mapper("t")).To(Equal("t"))
+}
+
+func TestNewPathMapperPrepend(t *testing.T) {
+	RegisterTestingT(t)
+	mapper := localdir.NewPathMapperPrepend("/prep")
+	Expect(mapper("t")).To(Equal("/prep/t"))
 }

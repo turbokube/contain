@@ -62,7 +62,7 @@ func FromFilesystem(dir Dir, attributes schema.LayerAttributes) (v1.Layer, error
 
 	err := fs.WalkDir(fileSystem, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal("walk ", dir.Path, "/", path, ": ", err)
 		}
 		if d.Type().IsDir() {
 			return nil

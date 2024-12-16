@@ -1,0 +1,5 @@
+base: gcr.io/distroless/base-debian11:debug-nonroot@sha256:3011e1597a9e51812d1c3287403abd44396c5e23d40f661252e2ef468a71aa07
+layers:
+- localDir:
+    path: localdir1/a.txt
+    containerPath: /onefile/1.txt

@@ -1,0 +1,17 @@
+schemaVersion: '2.0.0'
+fileExistenceTests:
+- name: '1'
+  path: '/onefile/1.txt'
+  shouldExist: true
+- name: 'notrenamed'
+  path: '/onefile/a.txt'
+  shouldExist: false
+- name: 'notremapped'
+  path: '/onefile/localdir1/a.txt'
+  shouldExist: false
+- name: 'notafile'
+  path: '/onefile/1.txt/a.txt'
+  shouldExist: false
+- name: 'notafile'
+  path: '/onefile/1.txt/localdir1/a.txt'
+  shouldExist: false
