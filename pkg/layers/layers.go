@@ -15,20 +15,26 @@ type LayerBuilder func() (v1.Layer, error)
 func NewLayerBuilder(cfg schema.Layer) (LayerBuilder, error) {
 	// TODO can we check that only one option is set
 	// (this concept is modelled on skaffold's "build:" config)
+	if cfg.LocalFile.Path != "" {
+		if cfg.LocalDir.Path != "" {
+			return nil, errors.New("each layer item must have exactly one type, got localFile and localDir")
+		}
+		return configure(localdir.NewFile(), schema.LocalDir{
+			Path:          cfg.LocalFile.Path,
+			ContainerPath: cfg.LocalFile.ContainerPath,
+			MaxSize:       cfg.LocalFile.MaxSize,
+		}, cfg.Attributes)
+	}
 	if cfg.LocalDir.Path != "" {
-		return newLayerBuilderLocalDir(cfg.LocalDir, cfg.Attributes)
+		return configure(localdir.NewDir(), cfg.LocalDir, cfg.Attributes)
 	}
 	return nil, errors.New("no layer builder config found")
 }
 
-func newLayerBuilderLocalDir(cfg schema.LocalDir, attributes schema.LayerAttributes) (LayerBuilder, error) {
-	dir := localdir.Dir{
-		Path: cfg.Path,
-	}
+func configure(dir localdir.From, cfg schema.LocalDir, attributes schema.LayerAttributes) (LayerBuilder, error) {
+	dir.Path = cfg.Path
 	if cfg.ContainerPath != "" {
 		dir.ContainerPath = localdir.NewPathMapperPrepend(cfg.ContainerPath)
-	} else {
-		dir.ContainerPath = localdir.NewPathMapperAsIs()
 	}
 	if len(cfg.Ignore) > 0 {
 		var err error

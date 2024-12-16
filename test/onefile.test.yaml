@@ -12,6 +12,6 @@ fileExistenceTests:
 - name: 'notafile'
   path: '/onefile/1.txt/a.txt'
   shouldExist: false
-- name: 'notafile'
+- name: 'notclever'
   path: '/onefile/1.txt/localdir1/a.txt'
   shouldExist: false

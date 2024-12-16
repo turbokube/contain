@@ -16,13 +16,13 @@ func debug(layer v1.Layer, t *testing.T) {
 	// not implemented
 }
 
-func expectDigest(input localdir.Dir, digest string, t *testing.T) {
+func expectDigest(input localdir.From, digest string, t *testing.T) {
 	expectDigestWithAttributes(schema.LayerAttributes{}, input, digest, t)
 }
 
 func expectDigestWithAttributes(
 	a schema.LayerAttributes,
-	input localdir.Dir,
+	input localdir.From,
 	digest string,
 	t *testing.T,
 ) {
@@ -46,11 +46,11 @@ func TestFromFilesystemDir1(t *testing.T) {
 	undo := zap.ReplaceGlobals(logger)
 	defer undo()
 
-	expectDigest(localdir.Dir{
+	expectDigest(localdir.From{
 		Path: "./testdata/dir1",
 	}, "sha256:545dc99b3997be1f82cc1fc559ca9495e438eaf4d55d1827deb672cfc171504e", t)
 
-	expectDigest(localdir.Dir{
+	expectDigest(localdir.From{
 		Path:          "./testdata/dir1",
 		ContainerPath: localdir.NewPathMapperPrepend("/app"),
 	}, "sha256:5135d234403e9b548686de3a65ed302923b15a662e7a0a202efc2ea7d81d89e6", t)
@@ -59,7 +59,7 @@ func TestFromFilesystemDir1(t *testing.T) {
 	if err != nil {
 		t.Errorf("patternmatcher: %v", err)
 	}
-	expectDigest(localdir.Dir{
+	expectDigest(localdir.From{
 		Path:          "./testdata/dir1",
 		ContainerPath: localdir.NewPathMapperPrepend("/app"),
 		Ignore:        ignoreA,
@@ -69,7 +69,7 @@ func TestFromFilesystemDir1(t *testing.T) {
 	if err != nil {
 		t.Errorf("patternmatcher: %v", err)
 	}
-	result, err := localdir.FromFilesystem(localdir.Dir{
+	result, err := localdir.FromFilesystem(localdir.From{
 		Path:          "./testdata/dir1",
 		ContainerPath: localdir.NewPathMapperPrepend("/app"),
 		Ignore:        ignoreAll,
@@ -81,19 +81,19 @@ func TestFromFilesystemDir1(t *testing.T) {
 		t.Errorf("Expected no result when there's an error")
 	}
 
-	expectDigest(localdir.Dir{
+	expectDigest(localdir.From{
 		Path: "./testdata/dir2",
 	}, "sha256:a7466234676e9d24fe2f8dc6d08e1b7ed1f5c17151e2d62687275f1d76cf3c68", t)
 
-	expectDigestWithAttributes(schema.LayerAttributes{FileMode: 0755}, localdir.Dir{
+	expectDigestWithAttributes(schema.LayerAttributes{FileMode: 0755}, localdir.From{
 		Path: "./testdata/dir2",
 	}, "sha256:20ca46c26fe5c9d7a81cd2509e9e9e0ca4cfd639940b9fe82c9bdc113a5bbaa0", t)
 
-	expectDigestWithAttributes(schema.LayerAttributes{Uid: 65532}, localdir.Dir{
+	expectDigestWithAttributes(schema.LayerAttributes{Uid: 65532}, localdir.From{
 		Path: "./testdata/dir2",
 	}, "sha256:cf729c44714cc4528d6f70f67cbe82358f55966a2168084149a94b00598b2b89", t)
 
-	expectDigestWithAttributes(schema.LayerAttributes{Gid: 65534}, localdir.Dir{
+	expectDigestWithAttributes(schema.LayerAttributes{Gid: 65534}, localdir.From{
 		Path: "./testdata/dir2",
 	}, "sha256:b9ef15618528091f7ead6945df474d60cb2930c22abac1267a6759d8e6d68e70", t)
 
@@ -109,4 +109,5 @@ func TestNewPathMapperPrepend(t *testing.T) {
 	RegisterTestingT(t)
 	mapper := localdir.NewPathMapperPrepend("/prep")
 	Expect(mapper("t")).To(Equal("/prep/t"))
+	Expect(mapper(".")).To(Equal("/prep"))
 }

@@ -43,6 +43,7 @@ func RunLayers(config schemav1.ContainConfig) ([]v1.Layer, error) {
 		b, err := layers.NewLayerBuilder(layerCfg)
 		if err != nil {
 			zap.L().Error("Failed to get layer builder",
+				zap.Int("index", i),
 				zap.Any("config", layerCfg),
 				zap.Error(err),
 			)

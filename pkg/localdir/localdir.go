@@ -1,6 +1,7 @@
 package localdir
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
@@ -15,12 +16,27 @@ import (
 
 type PathMapper func(string) string
 
-type Dir struct {
+type From struct {
+	isFile        bool
 	Path          string
 	ContainerPath PathMapper
 	Ignore        *patternmatcher.PatternMatcher
 	MaxFiles      int
 	MaxSize       int
+}
+
+func NewFile() From {
+	return From{
+		isFile:   true,
+		Ignore:   nil,
+		MaxFiles: 1,
+	}
+}
+
+func NewDir() From {
+	return From{
+		isFile: false,
+	}
 }
 
 func NewPathMapperPrepend(prependDir string) PathMapper {
@@ -31,6 +47,9 @@ func NewPathMapperPrepend(prependDir string) PathMapper {
 		log.Fatalf("prependDir should be a path without trailing slash, got: %s", prependDir)
 	}
 	return func(original string) string {
+		if original == "." {
+			return prependDir
+		}
 		return fmt.Sprintf("%s/%s", prependDir, original)
 	}
 }
@@ -41,13 +60,16 @@ func NewPathMapperAsIs() PathMapper {
 	}
 }
 
-func FromFilesystem(dir Dir, attributes schema.LayerAttributes) (v1.Layer, error) {
+func FromFilesystem(dir From, attributes schema.LayerAttributes) (v1.Layer, error) {
 
 	if dir.Path == "" {
-		return nil, fmt.Errorf("localDir must be specified (use . for CWD)")
+		return nil, fmt.Errorf("path must be specified (use . for CWD)")
 	}
 
 	if dir.ContainerPath == nil {
+		if dir.isFile {
+			return nil, errors.New("localFile layer requires containerPath")
+		}
 		dir.ContainerPath = NewPathMapperAsIs()
 	}
 
@@ -57,14 +79,18 @@ func FromFilesystem(dir Dir, attributes schema.LayerAttributes) (v1.Layer, error
 
 	bytesTotal := 0
 	filemap := make(map[string][]byte)
+	var byteSource fs.FS
 
-	fileSystem := os.DirFS(dir.Path)
-
-	err := fs.WalkDir(fileSystem, ".", func(path string, d fs.DirEntry, err error) error {
+	add := func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			log.Fatal("walk ", dir.Path, "/", path, ": ", err)
+			zap.L().Error("walk", zap.String("dir", dir.Path), zap.String("path", path), zap.Error(err))
+			if path == "." && d == nil && !dir.isFile {
+				zap.L().Info("To add a single file use a localFile layer istead of localDir", zap.String("path", dir.Path))
+				return errors.New("localDir configured for what looks like a file: " + dir.Path)
+			}
+			return err
 		}
-		if d.Type().IsDir() {
+		if d != nil && d.Type().IsDir() {
 			return nil
 		}
 		ignore, err := dir.Ignore.MatchesOrParentMatches(path)
@@ -78,7 +104,7 @@ func FromFilesystem(dir Dir, attributes schema.LayerAttributes) (v1.Layer, error
 		if dir.MaxFiles > 0 && len(filemap) >= dir.MaxFiles {
 			return fmt.Errorf("number of files exceeds max from layer config: %d", dir.MaxFiles)
 		}
-		file, err := fs.ReadFile(fileSystem, path)
+		file, err := fs.ReadFile(byteSource, path)
 		if err != nil {
 			return err
 		}
@@ -95,7 +121,16 @@ func FromFilesystem(dir Dir, attributes schema.LayerAttributes) (v1.Layer, error
 		)
 
 		return nil
-	})
+	}
+
+	var err error
+	if !dir.isFile {
+		byteSource = os.DirFS(dir.Path)
+		err = fs.WalkDir(byteSource, ".", add)
+	} else {
+		byteSource = NewSingleFileFS(dir.Path)
+		err = add(".", nil, nil)
+	}
 
 	if err != nil {
 		zap.L().Error("layer buffer failed", zap.Int("files", len(filemap)), zap.Int("bytes", bytesTotal), zap.Error(err))

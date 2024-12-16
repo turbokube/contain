@@ -34,7 +34,8 @@ type ContainConfigSync struct {
 type Layer struct {
 	Attributes LayerAttributes `yaml:"layerAttributes,omitempty"`
 	// exactly one of the following
-	LocalDir LocalDir `yaml:"localDir,omitempty"`
+	LocalDir  LocalDir  `yaml:"localDir,omitempty"`
+	LocalFile LocalFile `yaml:"localFile,omitempty"`
 }
 
 type LayerAttributes struct {
@@ -45,6 +46,14 @@ type LayerAttributes struct {
 	// Mode bits to use on files, must be a value between 0 and 0777.
 	// YAML accepts both octal and decimal values, JSON requires decimal values for mode bits.
 	FileMode int32 `yaml:"mode,omitempty"`
+}
+
+// LocalFile is a single file that should be appended as-is to base
+// with an optional path prefix, for example ./target/runner to /runner
+type LocalFile struct {
+	Path          string `yaml:"path" skaffold:"filepath,template"`
+	ContainerPath string `yaml:"containerPath,omitempty" skaffold:"template"`
+	MaxSize       string `yaml:"maxSize,omitempty" skaffold:"template"`
 }
 
 // LocalDir is a directory structure that should be appended as-is to base
