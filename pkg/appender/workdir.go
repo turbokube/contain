@@ -8,7 +8,8 @@ import (
 )
 
 type Chdir struct {
-	pwd string
+	pwd      string
+	restored bool
 }
 
 // NewChdir changes current working directory to the path given by the dir arg
@@ -43,6 +44,9 @@ func NewChdir(dir string) *Chdir {
 
 // cleanup restores working directory based on the result of NewChdir
 func (c *Chdir) Cleanup() {
+	if c.restored {
+		return
+	}
 	err := os.Chdir(c.pwd)
 	if err != nil {
 		zap.L().Fatal("restore cwd",
@@ -53,4 +57,5 @@ func (c *Chdir) Cleanup() {
 	zap.L().Debug("cwd restored",
 		zap.String("dir", c.pwd),
 	)
+	c.restored = true
 }

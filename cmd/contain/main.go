@@ -87,6 +87,20 @@ func init() {
 	flag.Parse()
 }
 
+func writeBuildOutput(buildOutput *contain.BuildOutput) {
+	if fileOutput != "" {
+		f, err := os.OpenFile(fileOutput, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+		if err != nil {
+			wd, _ := os.Getwd()
+			zap.L().Fatal("file-output open", zap.String("cwd", wd), zap.String("path", fileOutput), zap.Error(err))
+		}
+		if buildOutput.WriteJSON(f) != nil {
+			wd, _ := os.Getwd()
+			zap.L().Fatal("file-output write", zap.String("cwd", wd), zap.String("path", fileOutput), zap.Error(err))
+		}
+	}
+}
+
 func main() {
 	consoleDebugging := zapcore.Lock(os.Stderr)
 	consoleEncoder := zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig())
@@ -114,7 +128,14 @@ func main() {
 		zap.L().Fatal("watch not implemented")
 	}
 
+	writeBuildOutput(&contain.BuildOutput{
+		Trace: &contain.BuildTrace{
+			Start: &tStart,
+		},
+	})
+
 	workdir := flag.Arg(0)
+	var chdir *appender.Chdir
 	if workdir != "" && workdir != "." && workdir != "./" {
 		workdir, err = filepath.Abs(workdir)
 		if err != nil {
@@ -134,7 +155,7 @@ func main() {
 				zap.String("abs", workdir),
 			)
 		}
-		chdir := appender.NewChdir(workdir)
+		chdir = appender.NewChdir(workdir)
 		defer chdir.Cleanup()
 	}
 
@@ -258,14 +279,10 @@ func main() {
 	}
 	buildOutput.Print()
 
-	if fileOutput != "" {
-		f, err := os.OpenFile(fileOutput, os.O_RDWR|os.O_CREATE, 0755)
-		if err != nil {
-			zap.L().Fatal("file-output open", zap.String("path", fileOutput), zap.Error(err))
-		}
-		if buildOutput.WriteJSON(f) != nil {
-			zap.L().Fatal("file-output write", zap.String("path", fileOutput), zap.Error(err))
-		}
+	if chdir != nil {
+		chdir.Cleanup()
 	}
+
+	writeBuildOutput(buildOutput)
 
 }
