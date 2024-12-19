@@ -270,6 +270,53 @@ var cases = []testcases.Testcase{
 			Expect(b.Gid).To(Equal(5678))
 		},
 	},
+	{
+		// this LocalFile should layer should be identical to the LocalDir above and thus so shuld the Expect
+		RunConfig: func(config *testcases.TestInput, dir *testcases.TempDir) schema.ContainConfig {
+			dir.Write("f.txt", "")
+			return schema.ContainConfig{
+				// Base here has attestation layers, they should not be appended to
+				Base: "contain-test/baseimage-multiarch1:latest@sha256:c5653a3316b7217a0e7e2adec8ba8d344ba0815367aad8bd5513c9f6ca85834d",
+				Tag:  "contain-test/root:file",
+				Layers: []schema.Layer{
+					{
+						LocalFile: schema.LocalFile{
+							Path:          "f.txt",
+							ContainerPath: "/dir/f.txt",
+						},
+						Attributes: schema.LayerAttributes{
+							Uid:      1234,
+							Gid:      5678,
+							FileMode: 0750,
+						},
+					},
+				},
+			}
+		},
+		ExpectDigest: "sha256:9f775563117d9c8da855934a95d5f99f419432d1f5a944f1f2f565a2693cbc6c",
+		Expect: func(ref contain.Artifact, t *testing.T) {
+			img, err := remote.Image(ref.Reference(), testCraneOptions.Remote...)
+			Expect(err).To(BeNil())
+			var fs = make(map[string]*tar.Header)
+			tr := tar.NewReader(mutate.Extract(img))
+			for {
+				hdr, err := tr.Next()
+				if err == io.EOF {
+					break // End of archive
+				}
+				if err != nil {
+					t.Error(err)
+					t.FailNow()
+				}
+				fs[hdr.Name] = hdr
+			}
+			b := fs["/dir/f.txt"]
+			Expect(b).NotTo(BeNil(), "fs should contain the appended file")
+			Expect(b.FileInfo().Mode().String()).To(Equal("-rwxr-x---"))
+			Expect(b.Uid).To(Equal(1234))
+			Expect(b.Gid).To(Equal(5678))
+		},
+	},
 }
 
 func TestTestcases(t *testing.T) {
