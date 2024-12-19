@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/turbokube/contain/pkg/appender"
 	"github.com/turbokube/contain/pkg/contain"
@@ -34,6 +35,7 @@ var (
 	runNamespace string
 	fileOutput   string
 	platformsEnv bool
+	tStart       = time.Now()
 )
 
 func init() {
@@ -247,7 +249,13 @@ func main() {
 	if err != nil {
 		zap.L().Fatal("append", zap.Error(err))
 	}
+	tEnd := time.Now()
 
+	buildOutput.Trace = &contain.BuildTrace{
+		Start: &tStart,
+		End:   &tEnd,
+		Env:   contain.BuildTraceEnv(os.Environ()),
+	}
 	buildOutput.Print()
 
 	if fileOutput != "" {

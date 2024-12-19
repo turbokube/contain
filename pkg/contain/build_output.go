@@ -13,7 +13,8 @@ import (
 
 // BuildOutput is used to produce a similar output file that Skaffold does
 type BuildOutput struct {
-	Builds []Artifact `json:"builds"`
+	Builds []Artifact  `json:"builds"`
+	Trace  *BuildTrace `json:"trace,omitempty"`
 }
 
 type Artifact struct {
