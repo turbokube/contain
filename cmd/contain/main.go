@@ -128,12 +128,6 @@ func main() {
 		zap.L().Fatal("watch not implemented")
 	}
 
-	writeBuildOutput(&contain.BuildOutput{
-		Trace: &contain.BuildTrace{
-			Start: &tStart,
-		},
-	})
-
 	workdir := flag.Arg(0)
 	var chdir *appender.Chdir
 	if workdir != "" && workdir != "." && workdir != "./" {
@@ -242,6 +236,20 @@ func main() {
 	}
 
 	zap.L().Info("config", aboutConfig...)
+
+	if strings.Contains(fileOutput, "%platforms") {
+		if len(config.Platforms) != 1 {
+			fmt.Fprint(os.Stderr, "file output path with %platforms requires exactly one platform")
+			os.Exit(1)
+		}
+		fileOutput = strings.ReplaceAll(fileOutput, "%platforms", strings.Join(config.Platforms, ","))
+	}
+
+	writeBuildOutput(&contain.BuildOutput{
+		Trace: &contain.BuildTrace{
+			Start: &tStart,
+		},
+	})
 
 	layers, err := contain.RunLayers(config)
 	if err != nil {

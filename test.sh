@@ -46,6 +46,16 @@ localtest1_arm64=$(crane --platform=linux/arm64 digest $localtest1)
   exit 1
 }
 
+[ $(cat test/out/localdir-linux-amd64.json | wc -l) -eq 1 ] || {
+  echo "should have replaced %platform% in file output path with single platform"
+  exit 1
+}
+
+[ $(cat test/out/localdir-arm64.json | wc -l) -eq 1 ] || {
+  echo "should have replaced %platform2% in file output path with 2nd part of single platform string"
+  exit 1
+}
+
 for F in $(find test -name skaffold.fail-\*.yaml); do
   echo "=> Fail test: $F ..."
   RESULT=0
