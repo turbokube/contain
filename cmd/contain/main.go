@@ -89,7 +89,7 @@ func init() {
 
 func writeBuildOutput(buildOutput *contain.BuildOutput) {
 	if fileOutput != "" {
-		f, err := os.OpenFile(fileOutput, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+		f, err := os.OpenFile(fileOutput, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 		if err != nil {
 			wd, _ := os.Getwd()
 			zap.L().Fatal("file-output open", zap.String("cwd", wd), zap.String("path", fileOutput), zap.Error(err))
