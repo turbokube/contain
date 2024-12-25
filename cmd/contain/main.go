@@ -221,8 +221,7 @@ func main() {
 			zap.L().Info("platforms not equal, config kept", zap.String("env", platforms), zap.Strings("config", config.Platforms))
 		}
 	} else if platformsEnv {
-		fmt.Fprintf(os.Stderr, "%s env required but not found", envPlatforms)
-		os.Exit(1)
+		zap.S().Fatalf("%s env required but not found", envPlatforms)
 	}
 
 	var aboutConfig = make([]zap.Field, 0)
