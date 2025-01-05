@@ -1,7 +1,6 @@
 package schema
 
 import (
-	"bytes"
 	"crypto/md5"
 	"crypto/sha256"
 	"errors"
@@ -11,10 +10,10 @@ import (
 	"path/filepath"
 
 	"github.com/GoogleContainerTools/skaffold/v2/pkg/skaffold/tags"
+	"github.com/invopop/yaml"
 	"github.com/spf13/afero"
 	v1 "github.com/turbokube/contain/pkg/schema/v1"
 	"go.uber.org/zap"
-	yaml "gopkg.in/yaml.v3"
 )
 
 // Fs is the underlying filesystem to use for reading skaffold project files & configuration.  OS FS by default
@@ -51,11 +50,8 @@ func Parse(buf []byte) (v1.ContainConfig, error) {
 }
 
 func parseConfig(buf []byte) (v1.ContainConfig, error) {
-	b := bytes.NewReader(buf)
-	decoder := yaml.NewDecoder(b)
-	decoder.KnownFields(true)
 	var config v1.ContainConfig
-	err := decoder.Decode(&config)
+	err := yaml.Unmarshal(buf, &config)
 	if err == io.EOF {
 		// skaffold handles multiple configs: https://github.com/GoogleContainerTools/skaffold/blob/v2.12.0/pkg/skaffold/schema/versions.go#L320
 		return config, fmt.Errorf("config EOF: %w", err)

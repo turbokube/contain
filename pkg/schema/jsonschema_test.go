@@ -2,7 +2,7 @@ package schema_test
 
 import (
 	"encoding/json"
-	"fmt"
+	"os"
 	"testing"
 
 	"github.com/invopop/jsonschema"
@@ -22,9 +22,11 @@ func TestJsonschema(t *testing.T) {
 	t.Run("generate schema", func(t *testing.T) {
 		s := jsonschema.Reflect(&v1.ContainConfig{})
 		data, err := json.MarshalIndent(s, "", "  ")
-		if err != nil {
-			zap.L().Fatal("marshal", zap.Error(err))
-		}
-		fmt.Println(string(data))
+		Expect(err).To(BeNil())
+		f, err := os.Create("../..//jsonschema/config.json")
+		Expect(err).To(BeNil())
+		n, err := f.Write(data)
+		Expect(err).To(BeNil())
+		Expect(n > 0).To(BeTrue())
 	})
 }

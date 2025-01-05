@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/turbokube/contain/pkg/schema/v1/contain-config",
+  "$ref": "#/$defs/ContainConfig",
+  "$defs": {
+    "ContainConfig": {
+      "properties": {
+        "Status": {
+          "$ref": "#/$defs/ContainConfigStatus"
+        },
+        "base": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "string"
+        },
+        "platforms": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "layers": {
+          "items": {
+            "$ref": "#/$defs/Layer"
+          },
+          "type": "array"
+        },
+        "Sync": {
+          "$ref": "#/$defs/ContainConfigSync"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "Status",
+        "base",
+        "tag",
+        "platforms",
+        "Sync"
+      ]
+    },
+    "ContainConfigOverrides": {
+      "properties": {
+        "Base": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "Base"
+      ]
+    },
+    "ContainConfigStatus": {
+      "properties": {
+        "Template": {
+          "type": "boolean"
+        },
+        "Md5": {
+          "type": "string"
+        },
+        "Sha256": {
+          "type": "string"
+        },
+        "Overrides": {
+          "$ref": "#/$defs/ContainConfigOverrides"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "Template",
+        "Md5",
+        "Sha256",
+        "Overrides"
+      ]
+    },
+    "ContainConfigSync": {
+      "properties": {
+        "PodSelector": {
+          "type": "string"
+        },
+        "Namespace": {
+          "type": "string"
+        },
+        "GetAttemptsMax": {
+          "type": "integer"
+        },
+        "GetAttemptsWait": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "PodSelector",
+        "Namespace",
+        "GetAttemptsMax",
+        "GetAttemptsWait"
+      ]
+    },
+    "Layer": {
+      "properties": {
+        "layerAttributes": {
+          "$ref": "#/$defs/LayerAttributes"
+        },
+        "localDir": {
+          "$ref": "#/$defs/LocalDir"
+        },
+        "localFile": {
+          "$ref": "#/$defs/LocalFile"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "LayerAttributes": {
+      "properties": {
+        "uid": {
+          "type": "integer"
+        },
+        "gid": {
+          "type": "integer"
+        },
+        "mode": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "LocalDir": {
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "containerPath": {
+          "type": "string"
+        },
+        "ignore": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "maxFiles": {
+          "type": "integer"
+        },
+        "maxSize": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "path"
+      ]
+    },
+    "LocalFile": {
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "containerPath": {
+          "type": "string"
+        },
+        "maxSize": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "path"
+      ]
+    }
+  }
+}
