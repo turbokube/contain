@@ -3,14 +3,14 @@ package v1
 import "time"
 
 type ContainConfig struct {
-	Status ContainConfigStatus
+	Status ContainConfigStatus `json:"-"`
 	// Base is the base image reference
 	Base string `json:"base" skaffold:"template"`
 	// Tag is the result reference to be pushed
-	Tag       string   `json:"tag" skaffold:"template"`
-	Platforms []string `json:"platforms"`
-	Layers    []Layer  `json:"layers,omitempty"`
-	Sync      ContainConfigSync
+	Tag       string            `json:"tag,omitempty" skaffold:"template"`
+	Platforms []string          `json:"platforms,omitempty"`
+	Layers    []Layer           `json:"layers,omitempty"`
+	Sync      ContainConfigSync `json:"-"`
 }
 
 type ContainConfigStatus struct {

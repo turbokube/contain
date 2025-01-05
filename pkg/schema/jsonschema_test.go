@@ -20,10 +20,13 @@ func TestJsonschema(t *testing.T) {
 	defer undo()
 
 	t.Run("generate schema", func(t *testing.T) {
-		s := jsonschema.Reflect(&v1.ContainConfig{})
+		r := new(jsonschema.Reflector)
+		err := r.AddGoComments("github.com/invopop/jsonschema", "./")
+		Expect(err).To(BeNil())
+		s := r.Reflect(&v1.ContainConfig{})
 		data, err := json.MarshalIndent(s, "", "  ")
 		Expect(err).To(BeNil())
-		f, err := os.Create("../..//jsonschema/config.json")
+		f, err := os.Create("../../jsonschema/config.json")
 		Expect(err).To(BeNil())
 		n, err := f.Write(data)
 		Expect(err).To(BeNil())
