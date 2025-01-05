@@ -3,14 +3,14 @@ package v1
 import "time"
 
 type ContainConfig struct {
-	Status ContainConfigStatus
+	Status ContainConfigStatus `json:"-"`
 	// Base is the base image reference
-	Base string `yaml:"base" skaffold:"template"`
+	Base string `json:"base" skaffold:"template"`
 	// Tag is the result reference to be pushed
-	Tag       string   `yaml:"tag" skaffold:"template"`
-	Platforms []string `yaml:"platforms"`
-	Layers    []Layer  `yaml:"layers,omitempty"`
-	Sync      ContainConfigSync
+	Tag       string            `json:"tag,omitempty" skaffold:"template"`
+	Platforms []string          `json:"platforms,omitempty"`
+	Layers    []Layer           `json:"layers,omitempty"`
+	Sync      ContainConfigSync `json:"-"`
 }
 
 type ContainConfigStatus struct {
@@ -32,36 +32,36 @@ type ContainConfigSync struct {
 }
 
 type Layer struct {
-	Attributes LayerAttributes `yaml:"layerAttributes,omitempty"`
+	Attributes LayerAttributes `json:"layerAttributes,omitempty"`
 	// exactly one of the following
-	LocalDir  LocalDir  `yaml:"localDir,omitempty"`
-	LocalFile LocalFile `yaml:"localFile,omitempty"`
+	LocalDir  LocalDir  `json:"localDir,omitempty"`
+	LocalFile LocalFile `json:"localFile,omitempty"`
 }
 
 type LayerAttributes struct {
 	// generic, supported for applicable layer types
-	Uid uint16 `yaml:"uid,omitempty"`
-	Gid uint16 `yaml:"gid,omitempty"`
+	Uid uint16 `json:"uid,omitempty"`
+	Gid uint16 `json:"gid,omitempty"`
 
 	// Mode bits to use on files, must be a value between 0 and 0777.
 	// YAML accepts both octal and decimal values, JSON requires decimal values for mode bits.
-	FileMode int32 `yaml:"mode,omitempty"`
+	FileMode int32 `json:"mode,omitempty"`
 }
 
 // LocalFile is a single file that should be appended as-is to base
 // with an optional path prefix, for example ./target/runner to /runner
 type LocalFile struct {
-	Path          string `yaml:"path" skaffold:"filepath,template"`
-	ContainerPath string `yaml:"containerPath,omitempty" skaffold:"template"`
-	MaxSize       string `yaml:"maxSize,omitempty" skaffold:"template"`
+	Path          string `json:"path" skaffold:"filepath,template"`
+	ContainerPath string `json:"containerPath,omitempty" skaffold:"template"`
+	MaxSize       string `json:"maxSize,omitempty" skaffold:"template"`
 }
 
 // LocalDir is a directory structure that should be appended as-is to base
 // with an optional path prefix, for example ./target/app to /app
 type LocalDir struct {
-	Path          string   `yaml:"path" skaffold:"filepath,template"`
-	ContainerPath string   `yaml:"containerPath,omitempty" skaffold:"template"`
-	Ignore        []string `yaml:"ignore,omitempty" skaffold:"template"`
-	MaxFiles      int      `yaml:"maxFiles,omitempty"`
-	MaxSize       string   `yaml:"maxSize,omitempty" skaffold:"template"`
+	Path          string   `json:"path" skaffold:"filepath,template"`
+	ContainerPath string   `json:"containerPath,omitempty" skaffold:"template"`
+	Ignore        []string `json:"ignore,omitempty" skaffold:"template"`
+	MaxFiles      int      `json:"maxFiles,omitempty"`
+	MaxSize       string   `json:"maxSize,omitempty" skaffold:"template"`
 }

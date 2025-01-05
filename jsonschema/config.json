@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/turbokube/contain/pkg/schema/v1/contain-config",
+  "$ref": "#/$defs/ContainConfig",
+  "$defs": {
+    "ContainConfig": {
+      "properties": {
+        "base": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "string"
+        },
+        "platforms": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "layers": {
+          "items": {
+            "$ref": "#/$defs/Layer"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "base"
+      ]
+    },
+    "Layer": {
+      "properties": {
+        "layerAttributes": {
+          "$ref": "#/$defs/LayerAttributes"
+        },
+        "localDir": {
+          "$ref": "#/$defs/LocalDir"
+        },
+        "localFile": {
+          "$ref": "#/$defs/LocalFile"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "LayerAttributes": {
+      "properties": {
+        "uid": {
+          "type": "integer"
+        },
+        "gid": {
+          "type": "integer"
+        },
+        "mode": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "LocalDir": {
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "containerPath": {
+          "type": "string"
+        },
+        "ignore": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "maxFiles": {
+          "type": "integer"
+        },
+        "maxSize": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "path"
+      ]
+    },
+    "LocalFile": {
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "containerPath": {
+          "type": "string"
+        },
+        "maxSize": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "path"
+      ]
+    }
+  }
+}
