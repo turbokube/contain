@@ -25,10 +25,7 @@
         }
       },
       "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "base"
-      ]
+      "type": "object"
     },
     "Layer": {
       "properties": {

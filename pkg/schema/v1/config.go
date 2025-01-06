@@ -5,7 +5,7 @@ import "time"
 type ContainConfig struct {
 	Status ContainConfigStatus `json:"-"`
 	// Base is the base image reference
-	Base string `json:"base" skaffold:"template"`
+	Base string `json:"base,omitempty" skaffold:"template"`
 	// Tag is the result reference to be pushed
 	Tag       string            `json:"tag,omitempty" skaffold:"template"`
 	Platforms []string          `json:"platforms,omitempty"`
