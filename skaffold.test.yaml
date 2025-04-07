@@ -46,6 +46,10 @@ build:
     context: ./test/multilayer
     custom:
       buildCommand: contain -x --file-output ../out/mutilayer.json
+  - image: symlinks
+    context: ./test
+    custom:
+      buildCommand: contain -x -f symlinks.contain.yaml --file-output out/symlinks.json
   - image: config-override
     context: ./test/localdir1
     custom:

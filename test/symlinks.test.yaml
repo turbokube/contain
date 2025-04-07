@@ -1,0 +1,67 @@
+schemaVersion: '2.0.0'
+fileExistenceTests:
+- name: 'testfile.txt'
+  path: '/symlinks/testfile.txt'
+  shouldExist: true
+- name: 'subdir/dirfile.txt'
+  path: '/symlinks/subdir/dirfile.txt'
+  shouldExist: true
+- name: 'relative symlink to file'
+  path: '/symlinks/relative-symlink.txt'
+  shouldExist: true
+- name: 'absolute symlink to file'
+  path: '/symlinks/absolute-symlink.txt'
+  shouldExist: true
+- name: 'relative symlink to directory'
+  path: '/symlinks/relative-dir-symlink'
+  shouldExist: true
+- name: 'absolute symlink to directory'
+  path: '/symlinks/absolute-dir-symlink'
+  shouldExist: true
+
+fileContentTests:
+- name: 'verify testfile content'
+  path: '/symlinks/testfile.txt'
+  expectedContents: ['test file content']
+- name: 'verify dirfile content'
+  path: '/symlinks/subdir/dirfile.txt'
+  expectedContents: ['directory file content']
+- name: 'verify relative symlink to file content'
+  path: '/symlinks/relative-symlink.txt'
+  expectedContents: ['test file content']
+- name: 'verify absolute symlink to file content'
+  path: '/symlinks/absolute-symlink.txt'
+  expectedContents: ['test file content']
+
+metadataTest:
+  fileExistenceTests:
+  - path: '/symlinks/relative-symlink.txt'
+    shouldExist: true
+    isSymlink: true
+  - path: '/symlinks/absolute-symlink.txt'
+    shouldExist: true
+    isSymlink: true
+  - path: '/symlinks/relative-dir-symlink'
+    shouldExist: true
+    isSymlink: true
+  - path: '/symlinks/absolute-dir-symlink'
+    shouldExist: true
+    isSymlink: true
+
+commandTests:
+- name: 'verify relative symlink to file target'
+  command: 'readlink'
+  args: ['/symlinks/relative-symlink.txt']
+  expectedOutput: ['testfile.txt']
+- name: 'verify absolute symlink to file target'
+  command: 'readlink'
+  args: ['/symlinks/absolute-symlink.txt']
+  expectedOutput: ['testfile.txt']
+- name: 'verify relative symlink to directory target'
+  command: 'readlink'
+  args: ['/symlinks/relative-dir-symlink']
+  expectedOutput: ['subdir']
+- name: 'verify absolute symlink to directory target'
+  command: 'readlink'
+  args: ['/symlinks/absolute-dir-symlink']
+  expectedOutput: ['subdir']
