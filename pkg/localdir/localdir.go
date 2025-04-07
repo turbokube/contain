@@ -79,6 +79,8 @@ func FromFilesystem(dir From, attributes schema.LayerAttributes) (v1.Layer, erro
 
 	bytesTotal := 0
 	filemap := make(map[string][]byte)
+	// Track directories separately
+	dirmap := make(map[string]bool)
 	var byteSource fs.FS
 
 	add := func(path string, d fs.DirEntry, err error) error {
@@ -91,6 +93,13 @@ func FromFilesystem(dir From, attributes schema.LayerAttributes) (v1.Layer, erro
 			return err
 		}
 		if d != nil && d.Type().IsDir() {
+			// Track directories to add them to the tar with proper permissions
+			topath := dir.ContainerPath(path)
+			dirmap[topath] = true
+			zap.L().Debug("added directory",
+				zap.String("from", path),
+				zap.String("to", topath),
+			)
 			return nil
 		}
 		ignore, err := dir.Ignore.MatchesOrParentMatches(path)
@@ -142,6 +151,6 @@ func FromFilesystem(dir From, attributes schema.LayerAttributes) (v1.Layer, erro
 		return nil, fmt.Errorf("dir resulted in empty layer: %v", dir)
 	}
 
-	return Layer(filemap, attributes)
+	return Layer(filemap, dirmap, attributes)
 
 }

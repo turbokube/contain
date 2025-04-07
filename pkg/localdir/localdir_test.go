@@ -48,12 +48,12 @@ func TestFromFilesystemDir1(t *testing.T) {
 
 	expectDigest(localdir.From{
 		Path: "./testdata/dir1",
-	}, "sha256:545dc99b3997be1f82cc1fc559ca9495e438eaf4d55d1827deb672cfc171504e", t)
+	}, "sha256:5c116b43715d4cb103a472dcc384f4d0e8fb92e79e38c194178b0b7013a49be3", t)
 
 	expectDigest(localdir.From{
 		Path:          "./testdata/dir1",
 		ContainerPath: localdir.NewPathMapperPrepend("/app"),
-	}, "sha256:5135d234403e9b548686de3a65ed302923b15a662e7a0a202efc2ea7d81d89e6", t)
+	}, "sha256:39af1efac071289a4ca4c163b9c93083eed24afa07721984e5d7b6ab36042645", t)
 
 	ignoreA, err := patternmatcher.New([]string{"a.*"})
 	if err != nil {
@@ -63,7 +63,7 @@ func TestFromFilesystemDir1(t *testing.T) {
 		Path:          "./testdata/dir1",
 		ContainerPath: localdir.NewPathMapperPrepend("/app"),
 		Ignore:        ignoreA,
-	}, "sha256:fad4816a0e3821e9f23b6b4a9b2003d201ce17ad67ccb1b28734c0ed675dad7b", t)
+	}, "sha256:befccdb1423b50fdf5691e8126c80b875d449340c31ef5efd9a97cd1a0ee707c", t)
 
 	ignoreAll, err := patternmatcher.New([]string{"*"})
 	if err != nil {
@@ -83,19 +83,19 @@ func TestFromFilesystemDir1(t *testing.T) {
 
 	expectDigest(localdir.From{
 		Path: "./testdata/dir2",
-	}, "sha256:a7466234676e9d24fe2f8dc6d08e1b7ed1f5c17151e2d62687275f1d76cf3c68", t)
+	}, "sha256:85ce5400f21fc875bcf575243ae29db958d07699b07eb6d00f532e9e1d806bda", t)
 
 	expectDigestWithAttributes(schema.LayerAttributes{FileMode: 0755}, localdir.From{
 		Path: "./testdata/dir2",
-	}, "sha256:20ca46c26fe5c9d7a81cd2509e9e9e0ca4cfd639940b9fe82c9bdc113a5bbaa0", t)
+	}, "sha256:7f7f123e57c33d58d0efc1d1973852b4e981eece16209a4eab939138ea711140", t)
 
 	expectDigestWithAttributes(schema.LayerAttributes{Uid: 65532}, localdir.From{
 		Path: "./testdata/dir2",
-	}, "sha256:cf729c44714cc4528d6f70f67cbe82358f55966a2168084149a94b00598b2b89", t)
+	}, "sha256:b879074782a944a7699c32cefc4d76ec99c480f953735dd33166e4083de928bc", t)
 
 	expectDigestWithAttributes(schema.LayerAttributes{Gid: 65534}, localdir.From{
 		Path: "./testdata/dir2",
-	}, "sha256:b9ef15618528091f7ead6945df474d60cb2930c22abac1267a6759d8e6d68e70", t)
+	}, "sha256:d732c7242056913aaa8195a11d009cdceb843058c616d8dec4659927e6209984", t)
 
 }
 
