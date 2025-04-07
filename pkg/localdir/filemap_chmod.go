@@ -20,7 +20,8 @@ const (
 // Layer creates a layer from a single file map and directory map. These layers are reproducible and consistent.
 // A filemap is a path -> file content map representing a file system.
 // A dirmap is a path -> bool map representing directories to be created with proper permissions.
-func Layer(filemap map[string][]byte, dirmap map[string]bool, attributes schema.LayerAttributes) (v1.Layer, error) {
+// A symlinkMap is a path -> bool map indicating which entries in filemap are symlinks (where content is the target).
+func Layer(filemap map[string][]byte, dirmap map[string]bool, symlinkMap map[string]bool, attributes schema.LayerAttributes) (v1.Layer, error) {
 	b := &bytes.Buffer{}
 	w := tar.NewWriter(b)
 
@@ -59,25 +60,44 @@ func Layer(filemap map[string][]byte, dirmap map[string]bool, attributes schema.
 		}
 	}
 
-	// Then add files
+	// Then add files and symlinks
 	for _, f := range fn {
 		c := filemap[f]
 		mode := defaultFileMode
 		if attributes.FileMode != 0 {
 			mode = int64(attributes.FileMode)
 		}
-		if err := w.WriteHeader(&tar.Header{
-			Name:     f,
-			Size:     int64(len(c)),
-			Uid:      int(attributes.Uid),
-			Gid:      int(attributes.Gid),
-			Mode:     mode,
-			Typeflag: tar.TypeReg,
-		}); err != nil {
-			return nil, err
-		}
-		if _, err := w.Write(c); err != nil {
-			return nil, err
+
+		// Check if this is a symlink
+		if symlinkMap[f] {
+			// For symlinks, the content is actually the target path
+			target := string(c)
+			if err := w.WriteHeader(&tar.Header{
+				Name:     f,
+				Linkname: target,
+				Uid:      int(attributes.Uid),
+				Gid:      int(attributes.Gid),
+				Mode:     mode,
+				Typeflag: tar.TypeSymlink,
+			}); err != nil {
+				return nil, err
+			}
+			// No need to write content for symlinks
+		} else {
+			// Regular file
+			if err := w.WriteHeader(&tar.Header{
+				Name:     f,
+				Size:     int64(len(c)),
+				Uid:      int(attributes.Uid),
+				Gid:      int(attributes.Gid),
+				Mode:     mode,
+				Typeflag: tar.TypeReg,
+			}); err != nil {
+				return nil, err
+			}
+			if _, err := w.Write(c); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if err := w.Close(); err != nil {

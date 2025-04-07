@@ -1,6 +1,8 @@
 package localdir_test
 
 import (
+	"archive/tar"
+	"io"
 	"testing"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -110,4 +112,74 @@ func TestNewPathMapperPrepend(t *testing.T) {
 	mapper := localdir.NewPathMapperPrepend("/prep")
 	Expect(mapper("t")).To(Equal("/prep/t"))
 	Expect(mapper(".")).To(Equal("/prep"))
+}
+
+func TestSymlinksPreserved(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	defer logger.Sync()
+	undo := zap.ReplaceGlobals(logger)
+	defer undo()
+
+	RegisterTestingT(t)
+
+	// This test verifies that symlinks are preserved in localDir layers
+
+	// Create a layer from the test directory with symlinks
+	layer, err := localdir.FromFilesystem(localdir.From{
+		Path: "./testdata/symlinks",
+	}, schema.LayerAttributes{})
+	Expect(err).NotTo(HaveOccurred())
+
+	// Extract the layer to verify symlinks are preserved
+	reader, err := layer.Uncompressed()
+	Expect(err).NotTo(HaveOccurred())
+	defer reader.Close()
+
+	// Parse the tar archive
+	tr := tar.NewReader(reader)
+	
+	// Maps to track what we find in the tar
+	foundFiles := make(map[string]bool)
+	foundSymlinks := make(map[string]string) // path -> linkTarget
+	foundDirs := make(map[string]bool)
+
+	// Read all entries in the tar
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		Expect(err).NotTo(HaveOccurred())
+
+		t.Logf("Found entry: %s, type: %d", header.Name, header.Typeflag)
+
+		// Record the entry based on its type
+		switch header.Typeflag {
+		case tar.TypeReg: // Regular file
+			foundFiles[header.Name] = true
+		case tar.TypeSymlink: // Symlink
+			foundSymlinks[header.Name] = header.Linkname
+		case tar.TypeDir: // Directory
+			foundDirs[header.Name] = true
+		}
+	}
+
+	// Verify that we found the expected files
+	Expect(foundFiles).To(HaveKey("testfile.txt"))
+	Expect(foundFiles).To(HaveKey("dir1/dirfile.txt"))
+
+	// Verify that we found the expected symlinks with correct targets
+	// Relative symlinks should preserve their relative paths
+	Expect(foundSymlinks).To(HaveKey("relative-symlink.txt"))
+	Expect(foundSymlinks["relative-symlink.txt"]).To(Equal("testfile.txt"))
+
+	Expect(foundSymlinks).To(HaveKey("relative-dir-symlink"))
+	Expect(foundSymlinks["relative-dir-symlink"]).To(Equal("dir1"))
+
+	// Absolute symlinks should be converted to relative paths in the layer
+	Expect(foundSymlinks).To(HaveKey("absolute-symlink.txt"))
+	Expect(foundSymlinks["absolute-symlink.txt"]).To(Equal("testfile.txt"))
+
+	Expect(foundSymlinks).To(HaveKey("absolute-dir-symlink"))
+	Expect(foundSymlinks["absolute-dir-symlink"]).To(Equal("dir1"))
 }

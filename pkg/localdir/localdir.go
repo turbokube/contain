@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -81,6 +82,8 @@ func FromFilesystem(dir From, attributes schema.LayerAttributes) (v1.Layer, erro
 	filemap := make(map[string][]byte)
 	// Track directories separately
 	dirmap := make(map[string]bool)
+	// Track symlinks separately
+	symlinkMap := make(map[string]bool)
 	// Track source paths for container paths
 	sourcePathMap := make(map[string]string)
 	var byteSource fs.FS
@@ -94,15 +97,80 @@ func FromFilesystem(dir From, attributes schema.LayerAttributes) (v1.Layer, erro
 			}
 			return err
 		}
-		if d != nil && d.Type().IsDir() {
-			// Track directories to add them to the tar with proper permissions
+		if d != nil {
+			// Handle different file types
+			fileType := d.Type()
 			topath := dir.ContainerPath(path)
-			dirmap[topath] = true
-			zap.L().Debug("added directory",
-				zap.String("from", path),
-				zap.String("to", topath),
-			)
-			return nil
+			
+			// Handle directories
+			if fileType.IsDir() {
+				// Track directories to add them to the tar with proper permissions
+				dirmap[topath] = true
+				zap.L().Debug("added directory",
+					zap.String("from", path),
+					zap.String("to", topath),
+				)
+				return nil
+			}
+			
+			// Handle symlinks
+			if fileType&fs.ModeSymlink != 0 {
+				// For symlinks, we need to get the target using os.Readlink
+				// since fs.FS doesn't provide direct access to symlink targets
+				absPath := filepath.Join(dir.Path, path)
+				target, err := os.Readlink(absPath)
+				if err != nil {
+					return fmt.Errorf("failed to read symlink %s: %w", path, err)
+				}
+				
+				// For absolute symlinks, we need to convert them to relative paths
+				// that will work correctly in the container context
+				if filepath.IsAbs(target) {
+					// For absolute symlinks within the source directory, convert to relative paths
+					// that will work in the container
+					
+					// First, get the base filename from the target
+					baseName := filepath.Base(target)
+					
+					// For symlinks to files, just use the filename
+					// This works because we're flattening the directory structure in the container
+					target = baseName
+					
+					// For directory symlinks, we need to check if it points to a directory we've added
+					dirPath := filepath.Dir(target)
+					if dirPath != "/" {
+						// Check if this is a directory we've already processed
+						for containerDirPath := range dirmap {
+							if containerDirPath != "." && strings.HasSuffix(target, containerDirPath) {
+								target = containerDirPath
+								break
+							}
+						}
+					}
+					
+					zap.L().Debug("converted absolute symlink to relative",
+						zap.String("path", path),
+						zap.String("original", target),
+						zap.String("converted", target),
+					)
+				}
+				
+				// Store the symlink in a special map
+				filemap[topath] = []byte(target)
+				
+				// Mark this as a symlink in a separate map
+				symlinkMap[topath] = true
+				
+				// Record the source path for this container path
+				sourcePathMap[topath] = path
+				
+				zap.L().Debug("added symlink",
+					zap.String("from", path),
+					zap.String("to", topath),
+					zap.String("target", target),
+				)
+				return nil
+			}
 		}
 		ignore, err := dir.Ignore.MatchesOrParentMatches(path)
 		if err != nil {
@@ -234,6 +302,6 @@ func FromFilesystem(dir From, attributes schema.LayerAttributes) (v1.Layer, erro
 		return nil, fmt.Errorf("dir resulted in empty layer: %v", dir)
 	}
 
-	return Layer(filemap, dirmap, attributes)
+	return Layer(filemap, dirmap, symlinkMap, attributes)
 
 }
