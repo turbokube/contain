@@ -40,9 +40,11 @@ func Layer(filemap map[string][]byte, dirmap map[string]bool, attributes schema.
 	for _, d := range dn {
 		// Use directory mode (add execute bits to match standard directory permissions)
 		mode := int64(0755) // Default directory mode
-		if attributes.FileMode != 0 {
-			// For directories, we need to ensure they have execute permissions
-			// to be traversable, so we use the provided mode directly
+		if attributes.DirMode != 0 {
+			// Use the specific directory mode if provided
+			mode = int64(attributes.DirMode)
+		} else if attributes.FileMode != 0 {
+			// If dirMode is not specified, fall back to mode (FileMode)
 			mode = int64(attributes.FileMode)
 		}
 		if err := w.WriteHeader(&tar.Header{

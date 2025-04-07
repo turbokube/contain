@@ -15,12 +15,12 @@ fileExistenceTests:
 - name: 'a.txt'
   path: '/filemode/a.txt'
   shouldExist: true
-  permissions: '-r-x-wx-w-'
+  permissions: '-r---w--w-'
   uid: 65532
   gid: 65534
 - name: 'a.txt'
   path: '/filemode/subdir/b.txt'
   shouldExist: true
-  permissions: '-r-x-wx-w-'
+  permissions: '-r---w--w-'
   uid: 65532
   gid: 65534

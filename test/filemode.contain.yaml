@@ -7,4 +7,5 @@ layers:
   layerAttributes:
     uid: 65532
     gid: 65534
-    mode: 0532
+    mode: 0422
+    dirMode: 0532
