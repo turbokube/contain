@@ -81,6 +81,8 @@ func FromFilesystem(dir From, attributes schema.LayerAttributes) (v1.Layer, erro
 	filemap := make(map[string][]byte)
 	// Track directories separately
 	dirmap := make(map[string]bool)
+	// Track source paths for container paths
+	sourcePathMap := make(map[string]string)
 	var byteSource fs.FS
 
 	add := func(path string, d fs.DirEntry, err error) error {
@@ -123,6 +125,8 @@ func FromFilesystem(dir From, attributes schema.LayerAttributes) (v1.Layer, erro
 		}
 		topath := dir.ContainerPath(path)
 		filemap[topath] = file
+		// Record the source path for this container path
+		sourcePathMap[topath] = path
 		zap.L().Debug("added",
 			zap.String("from", path),
 			zap.String("to", topath),
@@ -145,7 +149,86 @@ func FromFilesystem(dir From, attributes schema.LayerAttributes) (v1.Layer, erro
 		zap.L().Error("layer buffer failed", zap.Int("files", len(filemap)), zap.Int("bytes", bytesTotal), zap.Error(err))
 		return nil, err
 	}
-	zap.L().Info("layer buffer created", zap.Int("files", len(filemap)), zap.Int("bytes", bytesTotal))
+
+	// Create a summary of the layer contents for DEBUG level
+	// Find the largest file
+	var largestFilePath string
+	var largestFileSize int
+	for path, content := range filemap {
+		if largestFilePath == "" || len(content) > largestFileSize {
+			largestFilePath = path
+			largestFileSize = len(content)
+		}
+	}
+
+	// Count files per directory
+	dirFileCounts := make(map[string]int)
+	for path := range filemap {
+		// Get parent directory
+		lastSlash := strings.LastIndex(path, "/")
+		if lastSlash > 0 {
+			parentDir := path[:lastSlash]
+			dirFileCounts[parentDir]++
+		} else {
+			// Root files
+			dirFileCounts["/"]++
+		}
+	}
+
+	// Find directory with most files
+	var biggestDirPath string
+	var biggestDirCount int
+	for path, count := range dirFileCounts {
+		if biggestDirPath == "" || count > biggestDirCount {
+			biggestDirPath = path
+			biggestDirCount = count
+		}
+	}
+
+	// Prepare log fields
+	logFields := []zap.Field{
+		zap.Int("files", len(filemap)),
+		zap.Int("bytes", bytesTotal),
+		zap.Int("dirs", len(dirmap)),
+	}
+
+	// Always include largest_file when files are found
+	if largestFilePath != "" {
+		// Get the source path for the largest file
+		sourcePath, ok := sourcePathMap[largestFilePath]
+		if !ok {
+			sourcePath = "unknown"
+		}
+		largestFileStr := fmt.Sprintf("%s -> %s (%d bytes)", sourcePath, largestFilePath, largestFileSize)
+		logFields = append(logFields, zap.String("largest_file", largestFileStr))
+	}
+
+	// Include biggest_dir when there are any directories with files
+	if len(dirFileCounts) > 0 && biggestDirPath != "" {
+		// For directories, we need to find a file in that directory to get the source mapping
+		var sourceDirPath string
+		for containerPath, sourcePath := range sourcePathMap {
+			// Check if this file is in the biggest directory
+			if strings.HasPrefix(containerPath, biggestDirPath+"/") {
+				// Extract the source directory from the source file path
+				lastSlash := strings.LastIndex(sourcePath, "/")
+				if lastSlash > 0 {
+					sourceDirPath = sourcePath[:lastSlash]
+				} else {
+					sourceDirPath = "."
+				}
+				break
+			}
+		}
+		// If we couldn't find a source directory, use a placeholder
+		if sourceDirPath == "" {
+			sourceDirPath = "unknown"
+		}
+		biggestDirStr := fmt.Sprintf("%s -> %s (%d files)", sourceDirPath, biggestDirPath, biggestDirCount)
+		logFields = append(logFields, zap.String("biggest_dir", biggestDirStr))
+	}
+
+	zap.L().Info("layer buffer created", logFields...)
 
 	if len(filemap) == 0 {
 		return nil, fmt.Errorf("dir resulted in empty layer: %v", dir)
