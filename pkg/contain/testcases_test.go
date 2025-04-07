@@ -339,13 +339,14 @@ var cases = []testcases.Testcase{
 						Attributes: schema.LayerAttributes{
 							Uid:      65532,
 							Gid:      65534,
-							FileMode: 0532, // dr-x-wx-w-
+							FileMode: 0400, // r--------
+							DirMode:  0532, // dr-x-wx-w-
 						},
 					},
 				},
 			}
 		},
-		ExpectDigest: "sha256:faf6f031493f55b658912e21e538a671e26f65e1ddda964daeb133594c347fae",
+		ExpectDigest: "sha256:ce33cc7201cbc68692f188aa7214a2ba1ed1f999e998ca5687534877c2191ac5",
 		Expect: func(ref contain.Artifact, t *testing.T) {
 			img, err := remote.Image(ref.Reference(), testCraneOptions.Remote...)
 			Expect(err).To(BeNil())
@@ -377,13 +378,13 @@ var cases = []testcases.Testcase{
 			// Check files first since we know they exist
 			fileA := fs["/filemode/a.txt"]
 			Expect(fileA).NotTo(BeNil(), "fs should contain file a.txt")
-			Expect(fileA.FileInfo().Mode().String()).To(Equal("-r-x-wx-w-"), "file should have mode -r-x-wx-w-")
+			Expect(fileA.FileInfo().Mode().String()).To(Equal("-r--------"), "file should have mode -r--------")
 			Expect(fileA.Uid).To(Equal(65532), "file should have uid 65532")
 			Expect(fileA.Gid).To(Equal(65534), "file should have gid 65534")
 
 			fileB := fs["/filemode/subdir/b.txt"]
 			Expect(fileB).NotTo(BeNil(), "fs should contain file b.txt")
-			Expect(fileB.FileInfo().Mode().String()).To(Equal("-r-x-wx-w-"), "file should have mode -r-x-wx-w-")
+			Expect(fileB.FileInfo().Mode().String()).To(Equal("-r--------"), "file should have mode -r--------")
 			Expect(fileB.Uid).To(Equal(65532), "file should have uid 65532")
 			Expect(fileB.Gid).To(Equal(65534), "file should have gid 65534")
 
@@ -413,10 +414,10 @@ var cases = []testcases.Testcase{
 				Expect(rootDir.Uid).To(Equal(65532), "root directory should have uid 65532")
 				Expect(rootDir.Gid).To(Equal(65534), "root directory should have gid 65534")
 
-				// Optionally check the mode if available
+				// Check the directory mode
 				if rootDir.FileInfo().IsDir() {
-					// The mode string might vary depending on how the directory is represented
-					// but we can at least verify it's a directory
+					// Verify the directory has the correct mode
+					Expect(rootDir.FileInfo().Mode().String()).To(Equal("dr-x-wx-w-"), "directory should have mode dr-x-wx-w-")
 					Expect(rootDir.FileInfo().IsDir()).To(BeTrue(), "root should be a directory")
 				}
 
