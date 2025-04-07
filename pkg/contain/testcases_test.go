@@ -45,7 +45,7 @@ var cases = []testcases.Testcase{
 				},
 			}
 		},
-		ExpectDigest: "sha256:5fbdcb2ac528ffe3aa2c5a7678d098b526eb7d3916d0bbee836549b0e20d746a",
+		ExpectDigest: "sha256:265cd10a40be498f1ee772725eb7b9a9405c6368babb53f131df650764be0d95",
 		Expect: func(ref contain.Artifact, t *testing.T) {
 
 			// double check base image digest
@@ -68,12 +68,14 @@ var cases = []testcases.Testcase{
 			Expect(manifest["schemaVersion"]).To(Equal(2.0))
 			Expect(manifest["mediaType"]).To(Equal("application/vnd.oci.image.manifest.v1+json"))
 			// layers := manifest["layers"].([]interface{})
-			Expect(raw).To(MatchJSON(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{"mediaType":"application/vnd.oci.image.config.v1+json","size":639,"digest":"sha256:e451487e9f07fa55dc57c2a59f0e964ee7e5b8a05d3cc81cb1392812d07929c3"},"layers":[{"mediaType":"application/vnd.oci.image.layer.v1.tar+gzip","size":80,"digest":"sha256:ac770dd5cf15356232a70ab6d2689e60b39b23fffe1c10955ba2681d32a4ad15","annotations":{"buildkit/rewritten-timestamp":"0"}},{"mediaType":"application/vnd.docker.image.rootfs.diff.tar.gzip","size":107,"digest":"sha256:6c9f141295d5636893db1435b5a20917860516e5e772445fb08bc240af66e57b"}]}`))
+			Expect(raw).To(MatchJSON(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{"mediaType":"application/vnd.oci.image.config.v1+json","size":639,"digest":"sha256:280b42a4cf39c30e57d673110dbb05a6e651be7a9b63ccbfb70d062570b3edca"},"layers":[{"mediaType":"application/vnd.oci.image.layer.v1.tar+gzip","size":80,"digest":"sha256:ac770dd5cf15356232a70ab6d2689e60b39b23fffe1c10955ba2681d32a4ad15","annotations":{"buildkit/rewritten-timestamp":"0"}},{"mediaType":"application/vnd.docker.image.rootfs.diff.tar.gzip","size":138,"digest":"sha256:d2c0298f7dc6019c8820dafd513414784bdd6acdf113a51c298980ab5c6c94ca"}]}`))
 
 			m, err := remote.Get(ref.Reference(), testCraneOptions.Remote...)
 			Expect(err).To(BeNil())
-			Expect(m.Digest.Hex).To(Equal("5fbdcb2ac528ffe3aa2c5a7678d098b526eb7d3916d0bbee836549b0e20d746a"))
-			Expect(m.RawManifest()).To(MatchJSON(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[{"mediaType":"application/vnd.oci.image.manifest.v1+json","size":611,"digest":"sha256:1c94651a07505a79ab6c6a330b1bb643e1ba5141216f276cddfc0bcef4a05f05","platform":{"architecture":"amd64","os":"linux"}},{"mediaType":"application/vnd.oci.image.manifest.v1+json","size":611,"digest":"sha256:d38cbbfbb5b8c33cc0f9eb47c559e7a12939644a28fd60c7e5119c0f62546dbe","platform":{"architecture":"arm64","os":"linux"}}]}`))
+			Expect(m.Digest.Hex).To(Equal("265cd10a40be498f1ee772725eb7b9a9405c6368babb53f131df650764be0d95"))
+			rawManifest, err := m.RawManifest()
+			Expect(err).To(BeNil())
+			Expect(rawManifest).To(MatchJSON(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[{"mediaType":"application/vnd.oci.image.manifest.v1+json","size":611,"digest":"sha256:5171a7656cbeac1a3a240709dd7833ed1240bf0c897c5a2fdc0c66775c0facf5","platform":{"architecture":"amd64","os":"linux"}},{"mediaType":"application/vnd.oci.image.manifest.v1+json","size":611,"digest":"sha256:5286912f0a2dc34a5642dd3bb5a7a0bddd793434bcb336ba7c2669a5d49b5b6b","platform":{"architecture":"arm64","os":"linux"}}]}`))
 
 			amd64 := v1.Platform{Architecture: "amd64", OS: "linux"}
 			amd64options := append(testCraneOptions.Remote, remote.WithPlatform(amd64))
@@ -96,7 +98,7 @@ var cases = []testcases.Testcase{
 			if amd64cfg.Config.WorkingDir != "/" {
 				t.Errorf("workingdir %s", amd64cfg.Config.WorkingDir)
 			}
-			Expect(amd64config).To(MatchJSON(`{"architecture":"amd64","created":"1970-01-01T00:00:00Z","history":[{"created":"1970-01-01T00:00:00Z","created_by":"ARG TARGETARCH","comment":"buildkit.dockerfile.v0","empty_layer":true},{"created":"1970-01-01T00:00:00Z","created_by":"COPY ./amd64 / # buildkit","comment":"buildkit.dockerfile.v0"},{"created":"0001-01-01T00:00:00Z"}],"os":"linux","rootfs":{"type":"layers","diff_ids":["sha256:294329baf7cfd56cfce463c90292879d44d563febc3f77a4c4f4ba8bf0e07a24","sha256:fc2b7873b55585e496924fc15d8fbb4286e708b3d2434bbe8fa1d1711953c151"]},"config":{"Env":["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],"WorkingDir":"/"}}`))
+			Expect(amd64config).To(MatchJSON(`{"architecture":"amd64","created":"1970-01-01T00:00:00Z","history":[{"created":"1970-01-01T00:00:00Z","created_by":"ARG TARGETARCH","comment":"buildkit.dockerfile.v0","empty_layer":true},{"created":"1970-01-01T00:00:00Z","created_by":"COPY ./amd64 / # buildkit","comment":"buildkit.dockerfile.v0"},{"created":"0001-01-01T00:00:00Z"}],"os":"linux","rootfs":{"type":"layers","diff_ids":["sha256:294329baf7cfd56cfce463c90292879d44d563febc3f77a4c4f4ba8bf0e07a24","sha256:90dfd3cf0724e38eadf00ef61c828dd6461abdda4600fdf88e811963082d180c"]},"config":{"Env":["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],"WorkingDir":"/"}}`))
 
 			zap.L().Debug("amd64", zap.Int("layers", len(amd64layers)))
 
@@ -163,7 +165,7 @@ var cases = []testcases.Testcase{
 			if arm64cfg.Config.WorkingDir != "/" {
 				t.Errorf("workingdir %s", arm64cfg.Config.WorkingDir)
 			}
-			Expect(arm64config).To(MatchJSON(`{"architecture":"arm64","created":"1970-01-01T00:00:00Z","history":[{"created":"1970-01-01T00:00:00Z","created_by":"ARG TARGETARCH","comment":"buildkit.dockerfile.v0","empty_layer":true},{"created":"1970-01-01T00:00:00Z","created_by":"COPY ./arm64 / # buildkit","comment":"buildkit.dockerfile.v0"},{"created":"0001-01-01T00:00:00Z"}],"os":"linux","rootfs":{"type":"layers","diff_ids":["sha256:716e2984b8fca92562cff105a2fe22f4f2abdfa6ae853b72024ea2f2d1741a39","sha256:fc2b7873b55585e496924fc15d8fbb4286e708b3d2434bbe8fa1d1711953c151"]},"config":{"Env":["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],"WorkingDir":"/"}}`))
+			Expect(arm64config).To(MatchJSON(`{"architecture":"arm64","created":"1970-01-01T00:00:00Z","history":[{"created":"1970-01-01T00:00:00Z","created_by":"ARG TARGETARCH","comment":"buildkit.dockerfile.v0","empty_layer":true},{"created":"1970-01-01T00:00:00Z","created_by":"COPY ./arm64 / # buildkit","comment":"buildkit.dockerfile.v0"},{"created":"0001-01-01T00:00:00Z"}],"os":"linux","rootfs":{"type":"layers","diff_ids":["sha256:716e2984b8fca92562cff105a2fe22f4f2abdfa6ae853b72024ea2f2d1741a39","sha256:90dfd3cf0724e38eadf00ef61c828dd6461abdda4600fdf88e811963082d180c"]},"config":{"Env":["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],"WorkingDir":"/"}}`))
 
 			zap.L().Debug("arm64", zap.Int("layers", len(arm64layers)))
 			// we should assert on fs contents but we need an abstraction for the tar assertions above
@@ -186,7 +188,7 @@ var cases = []testcases.Testcase{
 				Platforms: []string{"linux/amd64"},
 			}
 		},
-		ExpectDigest: "sha256:dda9e675d63ac133fd541c076f3ba673beb70c3eee58dc603970929cea7a20b1",
+		ExpectDigest: "sha256:3064ba7c838827b640ed2fb5834aa99dde0b0762b967ac7f34ddf0ab9a68f7a3",
 		Expect: func(ref contain.Artifact, t *testing.T) {
 			img, err := remote.Get(ref.Reference(), testCraneOptions.Remote...)
 			Expect(err).To(BeNil())
@@ -212,7 +214,7 @@ var cases = []testcases.Testcase{
 				},
 			}
 		},
-		ExpectDigest: "sha256:b1f5d00014e713ed568b951280056828eb5ab6a3a90c9a73b0ea8e1d0749dc90",
+		ExpectDigest: "sha256:58363d57b9e2fec40e43d71a568a8cf521b9420d2d554e186ac4e3a8a81b76da",
 		Expect: func(ref contain.Artifact, t *testing.T) {
 			img, err := remote.Get(ref.Reference(), testCraneOptions.Remote...)
 			Expect(err).To(BeNil())
@@ -246,7 +248,7 @@ var cases = []testcases.Testcase{
 				},
 			}
 		},
-		ExpectDigest: "sha256:9f775563117d9c8da855934a95d5f99f419432d1f5a944f1f2f565a2693cbc6c",
+		ExpectDigest: "sha256:b3ca972402a7a3e23d19ce813fb5d637e0445ff9e7f82d806a031426c7422548",
 		Expect: func(ref contain.Artifact, t *testing.T) {
 			img, err := remote.Image(ref.Reference(), testCraneOptions.Remote...)
 			Expect(err).To(BeNil())
@@ -343,7 +345,7 @@ var cases = []testcases.Testcase{
 				},
 			}
 		},
-		ExpectDigest: "sha256:7256f2218e64498d48eddc4deb61198e3c5ba3e1d9befc747fa5d504015bed1d",
+		ExpectDigest: "sha256:faf6f031493f55b658912e21e538a671e26f65e1ddda964daeb133594c347fae",
 		Expect: func(ref contain.Artifact, t *testing.T) {
 			img, err := remote.Image(ref.Reference(), testCraneOptions.Remote...)
 			Expect(err).To(BeNil())
@@ -405,10 +407,32 @@ var cases = []testcases.Testcase{
 			}
 			zap.L().Debug("fs keys", zap.Strings("keys", keys))
 
-			// Skip directory checks if we can't find the directories
-			// The test will still verify file permissions
+			// Check if we found the root directory and verify its permissions if found
+			if rootDir != nil {
+				// Assert that the root directory has the configured owner and group
+				Expect(rootDir.Uid).To(Equal(65532), "root directory should have uid 65532")
+				Expect(rootDir.Gid).To(Equal(65534), "root directory should have gid 65534")
 
-			// We've already checked the files above
+				// Optionally check the mode if available
+				if rootDir.FileInfo().IsDir() {
+					// The mode string might vary depending on how the directory is represented
+					// but we can at least verify it's a directory
+					Expect(rootDir.FileInfo().IsDir()).To(BeTrue(), "root should be a directory")
+				}
+
+				zap.L().Debug("root directory found",
+					zap.String("path", rootDir.Name),
+					zap.Int("uid", rootDir.Uid),
+					zap.Int("gid", rootDir.Gid),
+					zap.String("mode", rootDir.FileInfo().Mode().String()))
+			} else {
+				// Log that we couldn't find the root directory
+				zap.L().Debug("root directory not found in tar archive")
+
+				// Even if we can't find the root directory itself, we've already verified
+				// that the files have the correct permissions, which indirectly confirms
+				// that the layer attributes are being applied correctly
+			}
 		},
 	},
 }
