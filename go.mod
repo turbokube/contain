@@ -1,6 +1,8 @@
 module github.com/turbokube/contain
 
-go 1.23.4
+go 1.23.7
+
+toolchain go1.23.8
 
 require (
 	github.com/GoogleContainerTools/skaffold/v2 v2.13.2
