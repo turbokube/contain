@@ -46,14 +46,16 @@ func TestAppender(t *testing.T) {
 	a, err := appender.New(base.(name.Digest), &r.Config, tag.(name.Tag))
 	Expect(err).NotTo(HaveOccurred())
 
+	// Create an empty dirmap for the new Layer function signature
+	emptyDirmap := make(map[string]bool)
 	layer1, err := localdir.Layer(map[string][]byte{
 		"test.txt": []byte("test"),
-	}, schema.LayerAttributes{})
+	}, emptyDirmap, schema.LayerAttributes{})
 	Expect(err).NotTo(HaveOccurred())
 
 	layer2, err := localdir.Layer(map[string][]byte{
 		"2": []byte("2"),
-	}, schema.LayerAttributes{})
+	}, emptyDirmap, schema.LayerAttributes{})
 	Expect(err).NotTo(HaveOccurred())
 
 	result, err := a.Append(layer1, layer2)
