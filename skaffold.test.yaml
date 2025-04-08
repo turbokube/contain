@@ -46,6 +46,10 @@ build:
     context: ./test/multilayer
     custom:
       buildCommand: contain -x --file-output ../out/mutilayer.json
+  - image: symlinks
+    context: ./test
+    custom:
+      buildCommand: contain -x -c symlinks.contain.yaml --file-output out/symlinks.json
   - image: config-override
     context: ./test/localdir1
     custom:
@@ -79,6 +83,10 @@ build:
     context: ./test
     custom:
       buildCommand: contain -x -c onefile.contain.yaml --file-output out/onefile.json
+  - image: filemode-preserve
+    context: ./test
+    custom:
+      buildCommand: contain -x -c filemode_preserve.contain.yaml --file-output out/filemode_preserve.json
 
 test:
 - image: localdir1
@@ -114,3 +122,9 @@ test:
 - image: onefile
   structureTests:
   - ./test/onefile.test.yaml
+- image: symlinks
+  structureTests:
+  - ./test/symlinks.test.yaml
+- image: filemode-preserve
+  structureTests:
+  - ./test/filemode_preserve.test.yaml

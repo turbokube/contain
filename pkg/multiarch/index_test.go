@@ -99,7 +99,11 @@ func TestIndexManifests(t *testing.T) {
 func MockLayer(filepath string, content string) (v1.Layer, appender.AppendResultLayer) {
 	filemap := make(map[string][]byte)
 	filemap[filepath] = []byte(content)
-	layer, err := localdir.Layer(filemap, schema.LayerAttributes{})
+	// Create empty maps for the new Layer function signature
+	dirmap := make(map[string]bool)
+	symlinkMap := make(map[string]bool)
+	modeMap := make(map[string]int64)
+	layer, err := localdir.Layer(filemap, dirmap, symlinkMap, modeMap, schema.LayerAttributes{})
 	Expect(err).NotTo(HaveOccurred())
 	m, err := layer.MediaType()
 	Expect(err).NotTo(HaveOccurred())
