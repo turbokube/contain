@@ -49,7 +49,7 @@ build:
   - image: symlinks
     context: ./test
     custom:
-      buildCommand: contain -x -f symlinks.contain.yaml --file-output out/symlinks.json
+      buildCommand: contain -x -c symlinks.contain.yaml --file-output out/symlinks.json
   - image: config-override
     context: ./test/localdir1
     custom:
@@ -118,3 +118,6 @@ test:
 - image: onefile
   structureTests:
   - ./test/onefile.test.yaml
+- image: symlinks
+  structureTests:
+  - ./test/symlinks.test.yaml
