@@ -83,6 +83,10 @@ build:
     context: ./test
     custom:
       buildCommand: contain -x -c onefile.contain.yaml --file-output out/onefile.json
+  - image: filemode-preserve
+    context: ./test
+    custom:
+      buildCommand: contain -x -c filemode_preserve.contain.yaml --file-output out/filemode_preserve.json
 
 test:
 - image: localdir1
@@ -121,3 +125,6 @@ test:
 - image: symlinks
   structureTests:
   - ./test/symlinks.test.yaml
+- image: filemode-preserve
+  structureTests:
+  - ./test/filemode_preserve.test.yaml
