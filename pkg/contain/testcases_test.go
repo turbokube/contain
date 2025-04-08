@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"testing"
 	"time"
 
@@ -29,6 +30,80 @@ const (
 
 // cases is an array because a testcase may depend on an output image from an earlier testcase
 var cases = []testcases.Testcase{
+	{
+		// Test file mode preservation from the filesystem
+		RunConfig: func(config *testcases.TestInput, dir *testcases.TempDir) schema.ContainConfig {
+			// Create files with standard modes first
+			dir.Write("regular.txt", "regular file content")
+			dir.Write("exec.sh", "#!/bin/sh\necho 'Hello'")
+			dir.Mkdir("subdir")
+			dir.Write("subdir/subfile.txt", "subdir file content")
+			
+			// Then set specific modes using os package
+			os.Chmod(dir.Path("regular.txt"), 0640)
+			os.Chmod(dir.Path("exec.sh"), 0755)
+			os.Chmod(dir.Path("subdir"), 0750)
+			os.Chmod(dir.Path("subdir/subfile.txt"), 0640)
+			
+			return schema.ContainConfig{
+				Base: "contain-test/baseimage-multiarch1:noattest@sha256:f9f2106a04a339d282f1152f0be7c9ce921a0c01320de838cda364948de66bd4",
+				Tag:  "contain-test/filemodes:preserved",
+				Layers: []schema.Layer{
+					{
+						LocalDir: schema.LocalDir{
+							Path:          ".",
+							ContainerPath: "/app",
+						},
+					},
+				},
+			}
+		},
+		ExpectDigest: "", // We don't have a fixed digest expectation for this test
+		Expect: func(ref contain.Artifact, t *testing.T) {
+			RegisterTestingT(t)
+			
+			// Get the image using the reference
+			img, err := remote.Image(ref.Reference(), testCraneOptions.Remote...)
+			Expect(err).NotTo(HaveOccurred())
+			
+			// Get the layer
+			layers, err := img.Layers()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(layers)).To(BeNumerically(">", 0))
+			
+			// Get the top layer (our localdir layer)
+			topLayer := layers[len(layers)-1]
+			
+			// Extract the layer contents
+			reader, err := topLayer.Uncompressed()
+			Expect(err).NotTo(HaveOccurred())
+			defer reader.Close()
+			
+			// Parse the tar archive
+			tr := tar.NewReader(reader)
+			
+			// Maps to track file modes
+			modes := make(map[string]int64)
+			
+			// Read all entries in the tar
+			for {
+				header, err := tr.Next()
+				if err == io.EOF {
+					break
+				}
+				Expect(err).NotTo(HaveOccurred())
+				
+				// Store the mode for each file
+				modes[header.Name] = header.Mode
+			}
+			
+			// Verify file modes are preserved
+			Expect(modes["regular.txt"]).To(Equal(int64(0640)), "regular.txt should have mode 0640")
+			Expect(modes["exec.sh"]).To(Equal(int64(0755)), "exec.sh should have mode 0755")
+			Expect(modes["subdir"]).To(Equal(int64(0750)), "subdir should have mode 0750")
+			Expect(modes["subdir/subfile.txt"]).To(Equal(int64(0640)), "subfile.txt should have mode 0640")
+		},
+	},
 	{
 		RunConfig: func(config *testcases.TestInput, dir *testcases.TempDir) schema.ContainConfig {
 			dir.Write("root.txt", "r")

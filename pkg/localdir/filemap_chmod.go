@@ -43,15 +43,16 @@ func Layer(filemap map[string][]byte, dirmap map[string]bool, symlinkMap map[str
 		// Use directory mode (add execute bits to match standard directory permissions)
 		mode := int64(0755) // Default directory mode
 		
-		// If we have a preserved mode from the filesystem, use it
-		if originalMode, exists := modeMap[d]; exists {
-			mode = originalMode
-		} else if attributes.DirMode != 0 {
+		// If DirMode is explicitly set in attributes, use it
+		if attributes.DirMode != 0 {
 			// Use the specific directory mode if provided
 			mode = int64(attributes.DirMode)
+		// If DirMode is not specified but FileMode is, fall back to FileMode
 		} else if attributes.FileMode != 0 {
-			// If dirMode is not specified, fall back to mode (FileMode)
 			mode = int64(attributes.FileMode)
+		// Otherwise, if we have a preserved mode from the filesystem, use it
+		} else if originalMode, exists := modeMap[d]; exists {
+			mode = originalMode
 		}
 		if err := w.WriteHeader(&tar.Header{
 			Name:     d,
@@ -70,11 +71,12 @@ func Layer(filemap map[string][]byte, dirmap map[string]bool, symlinkMap map[str
 		c := filemap[f]
 		mode := defaultFileMode
 		
-		// If we have a preserved mode from the filesystem, use it
-		if originalMode, exists := modeMap[f]; exists {
-			mode = originalMode
-		} else if attributes.FileMode != 0 {
+		// If FileMode is explicitly set in attributes, use it
+		if attributes.FileMode != 0 {
 			mode = int64(attributes.FileMode)
+		// Otherwise, if we have a preserved mode from the filesystem, use it
+		} else if originalMode, exists := modeMap[f]; exists {
+			mode = originalMode
 		}
 
 		// Check if this is a symlink
