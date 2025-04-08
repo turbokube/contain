@@ -3,24 +3,24 @@ fileExistenceTests:
 - name: 'dir'
   path: '/filemode'
   shouldExist: true
-  permissions: 'drwxr-xr-x'
-  uid: 0
-  gid: 0
+  permissions: 'dr-x-wx-w-'
+  uid: 65532
+  gid: 65534
 - name: 'subdir'
   path: '/filemode/subdir'
   shouldExist: true
-  permissions: 'drwxr-xr-x'
-  uid:
-  gid: 0
+  permissions: 'dr-x-wx-w-'
+  uid: 65532
+  gid: 65534
 - name: 'a.txt'
   path: '/filemode/a.txt'
   shouldExist: true
-  permissions: '-rwxrw-rw-'
+  permissions: '-r---w--w-'
   uid: 65532
   gid: 65534
 - name: 'a.txt'
   path: '/filemode/subdir/b.txt'
   shouldExist: true
-  permissions: '-rwxrw-rw-'
+  permissions: '-r---w--w-'
   uid: 65532
   gid: 65534
