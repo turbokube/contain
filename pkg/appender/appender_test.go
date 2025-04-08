@@ -49,14 +49,15 @@ func TestAppender(t *testing.T) {
 	// Create empty maps for the new Layer function signature
 	emptyDirmap := make(map[string]bool)
 	emptySymlinkMap := make(map[string]bool)
+	emptyModeMap := make(map[string]int64)
 	layer1, err := localdir.Layer(map[string][]byte{
 		"test.txt": []byte("test"),
-	}, emptyDirmap, emptySymlinkMap, schema.LayerAttributes{})
+	}, emptyDirmap, emptySymlinkMap, emptyModeMap, schema.LayerAttributes{})
 	Expect(err).NotTo(HaveOccurred())
 
 	layer2, err := localdir.Layer(map[string][]byte{
 		"2": []byte("2"),
-	}, emptyDirmap, emptySymlinkMap, schema.LayerAttributes{})
+	}, emptyDirmap, emptySymlinkMap, emptyModeMap, schema.LayerAttributes{})
 	Expect(err).NotTo(HaveOccurred())
 
 	result, err := a.Append(layer1, layer2)
