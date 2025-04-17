@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://github.com/GoogleContainerTools/skaffold/raw/v2.13.2/docs-v2/content/en/schemas/v3.json
+# yaml-language-server: $schema=https://github.com/GoogleContainerTools/skaffold/raw/refs/tags/v2.15.0/docs-v2/content/en/schemas/v4beta9.json
 apiVersion: skaffold/v3
 kind: Config
 build:
@@ -83,6 +83,10 @@ build:
     context: ./test
     custom:
       buildCommand: contain -x -c onefile.contain.yaml --file-output out/onefile.json
+  - image: filemode-preserve
+    context: ./test
+    custom:
+      buildCommand: contain -x -c filemode_preserve.contain.yaml --file-output out/filemode_preserve.json
 
 test:
 - image: localdir1
@@ -121,3 +125,15 @@ test:
 - image: symlinks
   structureTests:
   - ./test/symlinks.test.yaml
+- image: filemode-preserve
+  structureTests:
+  - ./test/filemode_preserve.test.yaml
+
+profiles:
+- name: darwin
+  activation:
+  - env: CONTAIN_CI_OSTYPE=darwin
+  test:
+  - image: filemode-preserve
+    structureTests:
+    - ./test/filemode_preserve.test.darwin.yaml

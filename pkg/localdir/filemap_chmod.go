@@ -21,7 +21,8 @@ const (
 // A filemap is a path -> file content map representing a file system.
 // A dirmap is a path -> bool map representing directories to be created with proper permissions.
 // A symlinkMap is a path -> bool map indicating which entries in filemap are symlinks (where content is the target).
-func Layer(filemap map[string][]byte, dirmap map[string]bool, symlinkMap map[string]bool, attributes schema.LayerAttributes) (v1.Layer, error) {
+// A modeMap is a path -> mode map containing the original file modes from the filesystem.
+func Layer(filemap map[string][]byte, dirmap map[string]bool, symlinkMap map[string]bool, modeMap map[string]int64, attributes schema.LayerAttributes) (v1.Layer, error) {
 	b := &bytes.Buffer{}
 	w := tar.NewWriter(b)
 
@@ -41,12 +42,17 @@ func Layer(filemap map[string][]byte, dirmap map[string]bool, symlinkMap map[str
 	for _, d := range dn {
 		// Use directory mode (add execute bits to match standard directory permissions)
 		mode := int64(0755) // Default directory mode
+		
+		// If DirMode is explicitly set in attributes, use it
 		if attributes.DirMode != 0 {
 			// Use the specific directory mode if provided
 			mode = int64(attributes.DirMode)
+		// If DirMode is not specified but FileMode is, fall back to FileMode
 		} else if attributes.FileMode != 0 {
-			// If dirMode is not specified, fall back to mode (FileMode)
 			mode = int64(attributes.FileMode)
+		// Otherwise, if we have a preserved mode from the filesystem, use it
+		} else if originalMode, exists := modeMap[d]; exists {
+			mode = originalMode
 		}
 		if err := w.WriteHeader(&tar.Header{
 			Name:     d,
@@ -64,8 +70,13 @@ func Layer(filemap map[string][]byte, dirmap map[string]bool, symlinkMap map[str
 	for _, f := range fn {
 		c := filemap[f]
 		mode := defaultFileMode
+		
+		// If FileMode is explicitly set in attributes, use it
 		if attributes.FileMode != 0 {
 			mode = int64(attributes.FileMode)
+		// Otherwise, if we have a preserved mode from the filesystem, use it
+		} else if originalMode, exists := modeMap[f]; exists {
+			mode = originalMode
 		}
 
 		// Check if this is a symlink

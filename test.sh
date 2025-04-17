@@ -22,7 +22,7 @@ export PATH=$(pwd)/dist/test:$PATH
 contain --version 2>&1 | grep '^test-'
 contain --help
 
-
+export CONTAIN_CI_OSTYPE=$(uname -s | tr '[:upper:]' '[:lower:]')
 
 skaffold $DEFAULT_REPO -f skaffold.test.yaml build --file-output=dist/test.artifacts --cache-artifacts=false $@
 

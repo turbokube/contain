@@ -86,6 +86,8 @@ func FromFilesystem(dir From, attributes schema.LayerAttributes) (v1.Layer, erro
 	symlinkMap := make(map[string]bool)
 	// Track source paths for container paths
 	sourcePathMap := make(map[string]string)
+	// Track original file modes from filesystem
+	modeMap := make(map[string]int64)
 	var byteSource fs.FS
 
 	add := func(path string, d fs.DirEntry, err error) error {
@@ -106,6 +108,13 @@ func FromFilesystem(dir From, attributes schema.LayerAttributes) (v1.Layer, erro
 			if fileType.IsDir() {
 				// Track directories to add them to the tar with proper permissions
 				dirmap[topath] = true
+				
+				// Capture the original file mode from the filesystem
+				absPath := filepath.Join(dir.Path, path)
+				if info, err := os.Stat(absPath); err == nil {
+					modeMap[topath] = int64(info.Mode() & 0777) // Only preserve permission bits
+				}
+				
 				zap.L().Debug("added directory",
 					zap.String("from", path),
 					zap.String("to", topath),
@@ -121,6 +130,11 @@ func FromFilesystem(dir From, attributes schema.LayerAttributes) (v1.Layer, erro
 				target, err := os.Readlink(absPath)
 				if err != nil {
 					return fmt.Errorf("failed to read symlink %s: %w", path, err)
+				}
+				
+				// Capture the original file mode from the filesystem
+				if info, err := os.Lstat(absPath); err == nil {
+					modeMap[topath] = int64(info.Mode() & 0777) // Only preserve permission bits
 				}
 				
 				// For absolute symlinks, we need to convert them to relative paths
@@ -195,6 +209,13 @@ func FromFilesystem(dir From, attributes schema.LayerAttributes) (v1.Layer, erro
 		filemap[topath] = file
 		// Record the source path for this container path
 		sourcePathMap[topath] = path
+		
+		// Capture the original file mode from the filesystem
+		absPath := filepath.Join(dir.Path, path)
+		if info, err := os.Stat(absPath); err == nil {
+			modeMap[topath] = int64(info.Mode() & 0777) // Only preserve permission bits
+		}
+		
 		zap.L().Debug("added",
 			zap.String("from", path),
 			zap.String("to", topath),
@@ -302,6 +323,6 @@ func FromFilesystem(dir From, attributes schema.LayerAttributes) (v1.Layer, erro
 		return nil, fmt.Errorf("dir resulted in empty layer: %v", dir)
 	}
 
-	return Layer(filemap, dirmap, symlinkMap, attributes)
+	return Layer(filemap, dirmap, symlinkMap, modeMap, attributes)
 
 }
