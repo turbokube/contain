@@ -52,6 +52,9 @@
         },
         "mode": {
           "type": "integer"
+        },
+        "dirMode": {
+          "type": "integer"
         }
       },
       "additionalProperties": false,

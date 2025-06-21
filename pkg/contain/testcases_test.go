@@ -45,7 +45,7 @@ var cases = []testcases.Testcase{
 				},
 			}
 		},
-		ExpectDigest: "sha256:5fbdcb2ac528ffe3aa2c5a7678d098b526eb7d3916d0bbee836549b0e20d746a",
+		ExpectDigest: "sha256:77a0a91e7960a6e1a2bb9dfef4bcc2263e61e3d2134fa5ef410353111562b0bb",
 		Expect: func(ref contain.Artifact, t *testing.T) {
 
 			// double check base image digest
@@ -68,12 +68,12 @@ var cases = []testcases.Testcase{
 			Expect(manifest["schemaVersion"]).To(Equal(2.0))
 			Expect(manifest["mediaType"]).To(Equal("application/vnd.oci.image.manifest.v1+json"))
 			// layers := manifest["layers"].([]interface{})
-			Expect(raw).To(MatchJSON(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{"mediaType":"application/vnd.oci.image.config.v1+json","size":639,"digest":"sha256:e451487e9f07fa55dc57c2a59f0e964ee7e5b8a05d3cc81cb1392812d07929c3"},"layers":[{"mediaType":"application/vnd.oci.image.layer.v1.tar+gzip","size":80,"digest":"sha256:ac770dd5cf15356232a70ab6d2689e60b39b23fffe1c10955ba2681d32a4ad15","annotations":{"buildkit/rewritten-timestamp":"0"}},{"mediaType":"application/vnd.docker.image.rootfs.diff.tar.gzip","size":107,"digest":"sha256:6c9f141295d5636893db1435b5a20917860516e5e772445fb08bc240af66e57b"}]}`))
+			Expect(raw).To(MatchJSON(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{"mediaType":"application/vnd.oci.image.config.v1+json","size":639,"digest":"sha256:1b7c800e73c5206b46a15df24ba81496169526c9f5d64eb670543cd06a8064b2"},"layers":[{"mediaType":"application/vnd.oci.image.layer.v1.tar+gzip","size":80,"digest":"sha256:ac770dd5cf15356232a70ab6d2689e60b39b23fffe1c10955ba2681d32a4ad15","annotations":{"buildkit/rewritten-timestamp":"0"}},{"mediaType":"application/vnd.docker.image.rootfs.diff.tar.gzip","size":133,"digest":"sha256:bb39ec9bfaf0ea30cce59126c50d3f98e998f253887d0e4a7aae37ef074eb477"}]}`))
 
 			m, err := remote.Get(ref.Reference(), testCraneOptions.Remote...)
 			Expect(err).To(BeNil())
-			Expect(m.Digest.Hex).To(Equal("5fbdcb2ac528ffe3aa2c5a7678d098b526eb7d3916d0bbee836549b0e20d746a"))
-			Expect(m.RawManifest()).To(MatchJSON(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[{"mediaType":"application/vnd.oci.image.manifest.v1+json","size":611,"digest":"sha256:1c94651a07505a79ab6c6a330b1bb643e1ba5141216f276cddfc0bcef4a05f05","platform":{"architecture":"amd64","os":"linux"}},{"mediaType":"application/vnd.oci.image.manifest.v1+json","size":611,"digest":"sha256:d38cbbfbb5b8c33cc0f9eb47c559e7a12939644a28fd60c7e5119c0f62546dbe","platform":{"architecture":"arm64","os":"linux"}}]}`))
+			Expect(m.Digest.Hex).To(Equal("77a0a91e7960a6e1a2bb9dfef4bcc2263e61e3d2134fa5ef410353111562b0bb"))
+			Expect(m.RawManifest()).To(MatchJSON(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[{"mediaType":"application/vnd.oci.image.manifest.v1+json","size":611,"digest":"sha256:dc908b7cd7a7f4a65bf27f91986edcd2845dbc0ecdf84597b706d46680e77b3e","platform":{"architecture":"amd64","os":"linux"}},{"mediaType":"application/vnd.oci.image.manifest.v1+json","size":611,"digest":"sha256:76fa84b1b236161728fa95e8f68b299bec763320877ca2b1bd9241622cd40158","platform":{"architecture":"arm64","os":"linux"}}]}`))
 
 			amd64 := v1.Platform{Architecture: "amd64", OS: "linux"}
 			amd64options := append(testCraneOptions.Remote, remote.WithPlatform(amd64))
@@ -96,7 +96,7 @@ var cases = []testcases.Testcase{
 			if amd64cfg.Config.WorkingDir != "/" {
 				t.Errorf("workingdir %s", amd64cfg.Config.WorkingDir)
 			}
-			Expect(amd64config).To(MatchJSON(`{"architecture":"amd64","created":"1970-01-01T00:00:00Z","history":[{"created":"1970-01-01T00:00:00Z","created_by":"ARG TARGETARCH","comment":"buildkit.dockerfile.v0","empty_layer":true},{"created":"1970-01-01T00:00:00Z","created_by":"COPY ./amd64 / # buildkit","comment":"buildkit.dockerfile.v0"},{"created":"0001-01-01T00:00:00Z"}],"os":"linux","rootfs":{"type":"layers","diff_ids":["sha256:294329baf7cfd56cfce463c90292879d44d563febc3f77a4c4f4ba8bf0e07a24","sha256:fc2b7873b55585e496924fc15d8fbb4286e708b3d2434bbe8fa1d1711953c151"]},"config":{"Env":["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],"WorkingDir":"/"}}`))
+			Expect(amd64config).To(MatchJSON(`{"architecture":"amd64","created":"1970-01-01T00:00:00Z","history":[{"created":"1970-01-01T00:00:00Z","created_by":"ARG TARGETARCH","comment":"buildkit.dockerfile.v0","empty_layer":true},{"created":"1970-01-01T00:00:00Z","created_by":"COPY ./amd64 / # buildkit","comment":"buildkit.dockerfile.v0"},{"created":"0001-01-01T00:00:00Z"}],"os":"linux","rootfs":{"type":"layers","diff_ids":["sha256:294329baf7cfd56cfce463c90292879d44d563febc3f77a4c4f4ba8bf0e07a24","sha256:a800f38d8d6b28428d0e23bc257e614ead7d9af4c80470d8771b5926b78c30a8"]},"config":{"Env":["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],"WorkingDir":"/"}}`))
 
 			zap.L().Debug("amd64", zap.Int("layers", len(amd64layers)))
 
@@ -139,7 +139,7 @@ var cases = []testcases.Testcase{
 
 			a := fs["/app/root.txt"]
 			Expect(a).NotTo(BeNil(), "fs should contain file from the appended layer")
-			Expect(a.Mode == 420).To(BeTrue(), "should be -rw-r--r--")
+			Expect(a.Mode == 493).To(BeTrue(), "should be -rwxr-xr-x (executable bit preserved from source)")
 			Expect(a.ModTime).To(Equal(time.Unix(0, 0)))
 
 			arm64 := v1.Platform{Architecture: "arm64", OS: "linux"}
@@ -163,7 +163,7 @@ var cases = []testcases.Testcase{
 			if arm64cfg.Config.WorkingDir != "/" {
 				t.Errorf("workingdir %s", arm64cfg.Config.WorkingDir)
 			}
-			Expect(arm64config).To(MatchJSON(`{"architecture":"arm64","created":"1970-01-01T00:00:00Z","history":[{"created":"1970-01-01T00:00:00Z","created_by":"ARG TARGETARCH","comment":"buildkit.dockerfile.v0","empty_layer":true},{"created":"1970-01-01T00:00:00Z","created_by":"COPY ./arm64 / # buildkit","comment":"buildkit.dockerfile.v0"},{"created":"0001-01-01T00:00:00Z"}],"os":"linux","rootfs":{"type":"layers","diff_ids":["sha256:716e2984b8fca92562cff105a2fe22f4f2abdfa6ae853b72024ea2f2d1741a39","sha256:fc2b7873b55585e496924fc15d8fbb4286e708b3d2434bbe8fa1d1711953c151"]},"config":{"Env":["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],"WorkingDir":"/"}}`))
+			Expect(arm64config).To(MatchJSON(`{"architecture":"arm64","created":"1970-01-01T00:00:00Z","history":[{"created":"1970-01-01T00:00:00Z","created_by":"ARG TARGETARCH","comment":"buildkit.dockerfile.v0","empty_layer":true},{"created":"1970-01-01T00:00:00Z","created_by":"COPY ./arm64 / # buildkit","comment":"buildkit.dockerfile.v0"},{"created":"0001-01-01T00:00:00Z"}],"os":"linux","rootfs":{"type":"layers","diff_ids":["sha256:716e2984b8fca92562cff105a2fe22f4f2abdfa6ae853b72024ea2f2d1741a39","sha256:a800f38d8d6b28428d0e23bc257e614ead7d9af4c80470d8771b5926b78c30a8"]},"config":{"Env":["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],"WorkingDir":"/"}}`))
 
 			zap.L().Debug("arm64", zap.Int("layers", len(arm64layers)))
 			// we should assert on fs contents but we need an abstraction for the tar assertions above
@@ -186,7 +186,7 @@ var cases = []testcases.Testcase{
 				Platforms: []string{"linux/amd64"},
 			}
 		},
-		ExpectDigest: "sha256:dda9e675d63ac133fd541c076f3ba673beb70c3eee58dc603970929cea7a20b1",
+		ExpectDigest: "sha256:507f8b59b57dee95fd2e486b422a8f8941e0fac597d75e6de9901eb2fd63f543",
 		Expect: func(ref contain.Artifact, t *testing.T) {
 			img, err := remote.Get(ref.Reference(), testCraneOptions.Remote...)
 			Expect(err).To(BeNil())
@@ -212,7 +212,7 @@ var cases = []testcases.Testcase{
 				},
 			}
 		},
-		ExpectDigest: "sha256:b1f5d00014e713ed568b951280056828eb5ab6a3a90c9a73b0ea8e1d0749dc90",
+		ExpectDigest: "sha256:45cf77a6f6bd4fff38ceaa367add5ddca0f730c09d564e33bded2b067feb82a7",
 		Expect: func(ref contain.Artifact, t *testing.T) {
 			img, err := remote.Get(ref.Reference(), testCraneOptions.Remote...)
 			Expect(err).To(BeNil())
@@ -246,7 +246,7 @@ var cases = []testcases.Testcase{
 				},
 			}
 		},
-		ExpectDigest: "sha256:9f775563117d9c8da855934a95d5f99f419432d1f5a944f1f2f565a2693cbc6c",
+		ExpectDigest: "sha256:2996535982e1f220457d7726c88e3322e225a4ad01d84f4295ab176eb7da8a85",
 		Expect: func(ref contain.Artifact, t *testing.T) {
 			img, err := remote.Image(ref.Reference(), testCraneOptions.Remote...)
 			Expect(err).To(BeNil())
