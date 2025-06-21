@@ -371,10 +371,10 @@ func TestTestcases(t *testing.T) {
 			if buildOutput == nil {
 				t.Fatalf("nil buildOutput")
 			}
-			if len(buildOutput.Builds) == 0 {
+			if buildOutput.Skaffold == nil || len(buildOutput.Skaffold.Builds) == 0 {
 				t.Fatalf("Zero builds in buildOutput: %v", buildOutput)
 			}
-			result := buildOutput.Builds[0]
+			result := buildOutput.Skaffold.Builds[0]
 
 			expectRef := fmt.Sprintf("%s@%s", c.Tag, testcase.ExpectDigest)
 			if result.Tag != expectRef || !SkipExpectIfDigestMatches {

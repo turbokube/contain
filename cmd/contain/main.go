@@ -34,6 +34,7 @@ var (
 	runSelector  string
 	runNamespace string
 	fileOutput   string
+	metadataFile string
 	platformsEnv bool
 	tStart       = time.Now()
 )
@@ -72,6 +73,11 @@ func init() {
 		"",
 		"produce a builds JSON like Skaffold does",
 	)
+	flag.StringVar(&metadataFile,
+		"metadata-file",
+		"",
+		"produce a metadata JSON like buildctl does",
+	)
 	flag.BoolVar(&platformsEnv,
 		"platforms-env-require",
 		false,
@@ -94,9 +100,20 @@ func writeBuildOutput(buildOutput *contain.BuildOutput) {
 			wd, _ := os.Getwd()
 			zap.L().Fatal("file-output open", zap.String("cwd", wd), zap.String("path", fileOutput), zap.Error(err))
 		}
-		if buildOutput.WriteJSON(f) != nil {
+		if writeErr := buildOutput.WriteSkaffoldJSON(f); writeErr != nil {
 			wd, _ := os.Getwd()
-			zap.L().Fatal("file-output write", zap.String("cwd", wd), zap.String("path", fileOutput), zap.Error(err))
+			zap.L().Fatal("file-output write", zap.String("cwd", wd), zap.String("path", fileOutput), zap.Error(writeErr))
+		}
+	}
+	if metadataFile != "" {
+		f, err := os.OpenFile(metadataFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+		if err != nil {
+			wd, _ := os.Getwd()
+			zap.L().Fatal("metadata-file open", zap.String("cwd", wd), zap.String("path", metadataFile), zap.Error(err))
+		}
+		if writeErr := buildOutput.WriteBuildctlJSON(f); writeErr != nil {
+			wd, _ := os.Getwd()
+			zap.L().Fatal("metadata-file write", zap.String("cwd", wd), zap.String("path", metadataFile), zap.Error(writeErr))
 		}
 	}
 }

@@ -13,8 +13,16 @@ import (
 
 // BuildOutput is used to produce a similar output file that Skaffold does
 type BuildOutput struct {
-	Builds []Artifact  `json:"builds"`
-	Trace  *BuildTrace `json:"trace,omitempty"`
+	// Skaffold matches skaffold's --file-output format and can be used for skaffold deploy
+	Skaffold *BuildOutputSkaffold `json:"skaffold,omitempty"`
+	// Buildctl matches buildctl's --metadata-file format
+	Buildctl *MetadataSimilarToBuildctlFile `json:"buildctl,omitempty"`
+	// Trace is internal, doesn't need to match the output of any other tool
+	Trace *BuildTrace `json:"trace,omitempty"`
+}
+
+type BuildOutputSkaffold struct {
+	Builds []Artifact `json:"builds"`
 }
 
 type Artifact struct {
@@ -59,8 +67,79 @@ func NewBuildOutput(tag string, hash v1.Hash) (*BuildOutput, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Create metadata for buildctl format - we'll need more information later
+	metadata := &MetadataSimilarToBuildctlFile{
+		ContainerImageDigest: hash.String(),
+		ImageName:            tag,
+		// TODO: Add more complete metadata when available from AppendResult
+	}
+
 	return &BuildOutput{
-		Builds: []Artifact{*a},
+		Skaffold: &BuildOutputSkaffold{
+			Builds: []Artifact{*a},
+		},
+		Buildctl: metadata,
+	}, nil
+}
+
+// NewBuildOutputWithMetadata creates BuildOutput with complete metadata from AppendResult
+func NewBuildOutputWithMetadata(tag string, hash v1.Hash, image v1.Image, platform *v1.Platform) (*BuildOutput, error) {
+	a, err := newArtifact(tag, hash)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the image config digest
+	configHash, err := image.ConfigName()
+	if err != nil {
+		zap.L().Warn("failed to get config digest", zap.Error(err))
+	}
+
+	// Get the manifest for size and media type
+	manifest, err := image.Manifest()
+	if err != nil {
+		zap.L().Warn("failed to get manifest", zap.Error(err))
+	}
+
+	// Create metadata for buildctl format
+	metadata := &MetadataSimilarToBuildctlFile{
+		ContainerImageDigest: hash.String(),
+		ImageName:            tag,
+	}
+
+	// Set config digest if available
+	if configHash.String() != "" {
+		metadata.ContainerImageConfigDigest = configHash.String()
+	}
+
+	// Set descriptor information if manifest is available
+	if manifest != nil {
+		size, err := image.Size()
+		if err != nil {
+			zap.L().Warn("failed to get image size", zap.Error(err))
+		}
+
+		metadata.ContainerImageDescriptor = ContainerImageDescriptor{
+			MediaType: string(manifest.MediaType),
+			Digest:    hash.String(),
+			Size:      int(size),
+		}
+
+		// Set platform information
+		if platform != nil {
+			metadata.ContainerImageDescriptor.Platform = Platform{
+				Architecture: platform.Architecture,
+				OS:           platform.OS,
+			}
+		}
+	}
+
+	return &BuildOutput{
+		Skaffold: &BuildOutputSkaffold{
+			Builds: []Artifact{*a},
+		},
+		Buildctl: metadata,
 	}, nil
 }
 
@@ -94,9 +173,37 @@ func newArtifact(tag string, hash v1.Hash) (*Artifact, error) {
 }
 
 func (b *BuildOutput) Print() {
-	for _, a := range b.Builds {
-		fmt.Println(a.Tag)
+	if b.Skaffold != nil {
+		for _, a := range b.Skaffold.Builds {
+			fmt.Println(a.Tag)
+		}
 	}
+}
+
+func (b *BuildOutput) WriteSkaffoldJSON(f *os.File) error {
+	if b.Skaffold == nil {
+		// If no Skaffold data, write empty builds array to maintain compatibility
+		b.Skaffold = &BuildOutputSkaffold{Builds: []Artifact{}}
+	}
+	j, err := json.Marshal(b.Skaffold)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(j)
+	return err
+}
+
+func (b *BuildOutput) WriteBuildctlJSON(f *os.File) error {
+	if b.Buildctl == nil {
+		// If no Buildctl data, write empty object to maintain compatibility
+		b.Buildctl = &MetadataSimilarToBuildctlFile{}
+	}
+	j, err := json.Marshal(b.Buildctl)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(j)
+	return err
 }
 
 func (b *BuildOutput) WriteJSON(f *os.File) error {
@@ -105,8 +212,5 @@ func (b *BuildOutput) WriteJSON(f *os.File) error {
 		return err
 	}
 	_, err = f.Write(j)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }

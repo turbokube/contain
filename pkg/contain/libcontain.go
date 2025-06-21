@@ -32,7 +32,10 @@ func Run(config schemav1.ContainConfig) (*Artifact, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &output.Builds[0], nil
+	if output.Skaffold != nil && len(output.Skaffold.Builds) > 0 {
+		return &output.Skaffold.Builds[0], nil
+	}
+	return nil, fmt.Errorf("no build output available")
 }
 
 // RunLayers is the file system access part of a run
@@ -111,6 +114,7 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, 
 	}
 
 	var resultHash v1.Hash
+	var singlePlatformResult *mutate.IndexAddendum // Store for metadata extraction
 
 	if index.SizeAppend() > 1 {
 		resultHash, err = index.PushWithAppend(each, buildOutputTag, tagRegistry)
@@ -127,6 +131,7 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, 
 			zap.L().Error("single image push", zap.Error(err))
 			return nil, err
 		}
+		singlePlatformResult = &pushed
 		resultHash, err = pushed.Add.Digest()
 		if err != nil {
 			zap.L().Error("single image push image digest", zap.Error(err))
@@ -138,7 +143,25 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, 
 	// todo multi-arch index from prototype result to result index
 	// produces new result hash
 
-	buildOutput, err := NewBuildOutput(buildOutputTag.String(), resultHash)
+	var buildOutput *BuildOutput
+	// Use enhanced metadata creation for single platform builds
+	if singlePlatformResult != nil {
+		// Cast Add to v1.Image since that's what it actually is in practice
+		if image, ok := singlePlatformResult.Add.(v1.Image); ok {
+			buildOutput, err = NewBuildOutputWithMetadata(
+				buildOutputTag.String(),
+				resultHash,
+				image,
+				singlePlatformResult.Descriptor.Platform,
+			)
+		} else {
+			// Fallback if casting fails
+			buildOutput, err = NewBuildOutput(buildOutputTag.String(), resultHash)
+		}
+	} else {
+		// Fallback for multi-platform builds (limited metadata)
+		buildOutput, err = NewBuildOutput(buildOutputTag.String(), resultHash)
+	}
 	if err != nil {
 		zap.L().Error("buildOutput", zap.Error(err))
 		return nil, err

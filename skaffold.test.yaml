@@ -9,11 +9,11 @@ build:
   - image: localdir1
     context: ./test/localdir1
     custom:
-      buildCommand: contain -x --file-output ../out/localdir.json
+      buildCommand: contain -x --file-output ../out/localdir.json --metadata-file ../out/localdir.buildctl.json
   - image: localdir-app
     context: ./test/localdir-app
     custom:
-      buildCommand: contain -x -b mirror.gcr.io/library/busybox@sha256:c3839dd800b9eb7603340509769c43e146a74c63dca3045a8e7dc8ee07e53966 --file-output ../out/localdir-app.json
+      buildCommand: contain -x -b mirror.gcr.io/library/busybox@sha256:c3839dd800b9eb7603340509769c43e146a74c63dca3045a8e7dc8ee07e53966 --file-output ../out/localdir-app.json --metadata-file ../out/localdir-app.buildctl.json
   - image: localdir-app-dot
     context: ./test/localdir-app
     custom:
@@ -25,7 +25,7 @@ build:
   - image: contextdir-app
     context: ./test
     custom:
-      buildCommand: contain -x -b mirror.gcr.io/library/busybox@sha256:c3839dd800b9eb7603340509769c43e146a74c63dca3045a8e7dc8ee07e53966 --file-output ./out/contextdir-app.json ./localdir-app
+      buildCommand: contain -x -b mirror.gcr.io/library/busybox@sha256:c3839dd800b9eb7603340509769c43e146a74c63dca3045a8e7dc8ee07e53966 --file-output ./out/contextdir-app.json --metadata-file ./out/contextdir-app.buildctl.json ./localdir-app
   - image: contextdir-config
     context: test
     custom:
