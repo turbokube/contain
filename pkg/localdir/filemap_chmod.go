@@ -28,11 +28,11 @@ var (
 
 // FileInfo represents file metadata for tar layer creation
 type FileInfo struct {
-	Path     string
-	Content  []byte
-	Mode     os.FileMode
-	IsDir    bool
-	IsSymlink bool
+	Path       string
+	Content    []byte
+	Mode       os.FileMode
+	IsDir      bool
+	IsSymlink  bool
 	LinkTarget string
 }
 
@@ -43,10 +43,10 @@ func Layer(filemap map[string][]byte, attributes schema.LayerAttributes) (v1.Lay
 	var files []FileInfo
 	for path, content := range filemap {
 		files = append(files, FileInfo{
-			Path:    path,
-			Content: content,
-			Mode:    0644, // default file mode
-			IsDir:   false,
+			Path:      path,
+			Content:   content,
+			Mode:      0644, // default file mode
+			IsDir:     false,
 			IsSymlink: false,
 		})
 	}
@@ -66,7 +66,7 @@ func LayerFromFiles(files []FileInfo, attributes schema.LayerAttributes) (v1.Lay
 	for _, file := range files {
 		mode := calculateFileMode(file, attributes)
 		var typeflag byte = tar.TypeReg
-		
+
 		if file.IsSymlink {
 			typeflag = tar.TypeSymlink
 		} else if file.IsDir {

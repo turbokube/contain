@@ -119,10 +119,10 @@ func FromFilesystemWithMetadata(dir From, attributes schema.LayerAttributes) (v1
 					return err
 				}
 				files = append(files, FileInfo{
-					Path:    topath,
-					Content: nil,
-					Mode:    info.Mode(),
-					IsDir:   true,
+					Path:      topath,
+					Content:   nil,
+					Mode:      info.Mode(),
+					IsDir:     true,
 					IsSymlink: false,
 				})
 				seenDirs[topath] = true

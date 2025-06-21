@@ -133,7 +133,7 @@ Contain implements reproducible builds using deterministic layer creation:
 
 - **Timestamps**: All files and directories in layers use `SOURCE_DATE_EPOCH` (1970-01-01T00:00:00Z) for reproducible timestamps
 - **File Modes**: File permissions are normalized to 0644 for regular files and 0755 for directories by default
-- **Executable Preservation**: The executable bit (0111) is preserved from source files when present  
+- **Executable Preservation**: The executable bit (0111) is preserved from source files when present
 - **Mode Override**: Layer attributes can override the default file and directory modes
 - **Symlink Support**: Symbolic links pointing within the source tree are preserved with their target paths
 - **Directory Inclusion**: Directory entries are explicitly included in layers for complete filesystem representation
@@ -171,7 +171,7 @@ This enables reliable caching, content-addressable storage, and deterministic co
 This version introduces major changes for reproducible builds that affect layer digests:
 
 - **Breaking Change**: All layer digests will change due to normalized timestamps and file modes
-- **Test Updates Required**: ExpectDigest values in integration tests need updating  
+- **Test Updates Required**: ExpectDigest values in integration tests need updating
 - **Backward Compatibility**: Configuration remains compatible, only layer content changes
 - **Benefits**: Builds are now deterministic across environments and time
 

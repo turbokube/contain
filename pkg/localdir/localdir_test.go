@@ -22,7 +22,7 @@ func debug(layer v1.Layer, t *testing.T) {
 		return
 	}
 	defer rc.Close()
-	
+
 	tr := tar.NewReader(rc)
 	t.Log("Layer contents:")
 	for {
@@ -35,7 +35,7 @@ func debug(layer v1.Layer, t *testing.T) {
 			break
 		}
 		t.Logf("  %s: mode=%o, uid=%d, gid=%d, size=%d, type=%c, modtime=%s",
-			header.Name, header.Mode, header.Uid, header.Gid, 
+			header.Name, header.Mode, header.Uid, header.Gid,
 			header.Size, header.Typeflag, header.ModTime.UTC())
 		if header.Typeflag == tar.TypeSymlink {
 			t.Logf("    -> symlink target: %s", header.Linkname)
@@ -185,7 +185,7 @@ func TestReproducibleBuilds(t *testing.T) {
 	// Verify timestamps are set to SOURCE_DATE_EPOCH
 	for name, header := range entries {
 		if !header.ModTime.Equal(localdir.SOURCE_DATE_EPOCH) {
-			t.Errorf("Entry %s has incorrect timestamp %v, expected %v", 
+			t.Errorf("Entry %s has incorrect timestamp %v, expected %v",
 				name, header.ModTime, localdir.SOURCE_DATE_EPOCH)
 		}
 	}
@@ -194,12 +194,12 @@ func TestReproducibleBuilds(t *testing.T) {
 	if entries["normal.txt"].Mode != 0644 {
 		t.Errorf("normal.txt should have mode 0644, got %o", entries["normal.txt"].Mode)
 	}
-	
+
 	// script.sh should preserve executable bit
 	if entries["script.sh"].Mode != 0755 {
 		t.Errorf("script.sh should have mode 0755 (preserving executable bit), got %o", entries["script.sh"].Mode)
 	}
-	
+
 	// symlink should be preserved
 	if entries["symlink.txt"].Typeflag != tar.TypeSymlink {
 		t.Errorf("symlink.txt should be a symlink, got typeflag %c", entries["symlink.txt"].Typeflag)
@@ -254,7 +254,7 @@ func TestModeOverrides(t *testing.T) {
 	if entries["normal.txt"].Mode != 0600 {
 		t.Errorf("normal.txt should have overridden mode 0600, got %o", entries["normal.txt"].Mode)
 	}
-	
+
 	if entries["."].Mode != 0700 {
 		t.Errorf("Directory should have overridden mode 0700, got %o", entries["."].Mode)
 	}
@@ -291,7 +291,7 @@ func TestReproducibleBuildsDeterministic(t *testing.T) {
 	}
 
 	if digest1.String() != digest2.String() {
-		t.Errorf("Layers should have identical digests for reproducible builds, got %s vs %s", 
+		t.Errorf("Layers should have identical digests for reproducible builds, got %s vs %s",
 			digest1.String(), digest2.String())
 	}
 
