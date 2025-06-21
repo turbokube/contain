@@ -13,8 +13,16 @@ import (
 
 // BuildOutput is used to produce a similar output file that Skaffold does
 type BuildOutput struct {
-	Builds []Artifact  `json:"builds"`
-	Trace  *BuildTrace `json:"trace,omitempty"`
+	// Skaffold matches skaffold's --file-output format and can be used for skaffold deploy
+	Skaffold *BuildOutputSkaffold `json:"skaffold,omitempty"`
+	// Buildctl matches buildctl's --metadata-file format
+	Buildctl *MetadataSimilarToBuildctlFile `json:"buildctl,omitempty"`
+	// Trace is internal, doesn't need to match the output of any other tool
+	Trace *BuildTrace `json:"trace,omitempty"`
+}
+
+type BuildOutputSkaffold struct {
+	Builds []Artifact `json:"builds"`
 }
 
 type Artifact struct {
