@@ -45,7 +45,7 @@ var cases = []testcases.Testcase{
 				},
 			}
 		},
-		ExpectDigest: "sha256:5fbdcb2ac528ffe3aa2c5a7678d098b526eb7d3916d0bbee836549b0e20d746a",
+		ExpectDigest: "sha256:dc908b7cd7a7f4a65bf27f91986edcd2845dbc0ecdf84597b706d46680e77b3e",
 		Expect: func(ref contain.Artifact, t *testing.T) {
 
 			// double check base image digest

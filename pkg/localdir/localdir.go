@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -61,7 +62,12 @@ func NewPathMapperAsIs() PathMapper {
 }
 
 func FromFilesystem(dir From, attributes schema.LayerAttributes) (v1.Layer, error) {
+	// Use the new metadata-aware function for reproducible builds
+	return FromFilesystemWithMetadata(dir, attributes)
+}
 
+// FromFilesystemWithMetadata creates a layer that preserves file metadata for reproducible builds
+func FromFilesystemWithMetadata(dir From, attributes schema.LayerAttributes) (v1.Layer, error) {
 	if dir.Path == "" {
 		return nil, fmt.Errorf("path must be specified (use . for CWD)")
 	}
@@ -78,21 +84,22 @@ func FromFilesystem(dir From, attributes schema.LayerAttributes) (v1.Layer, erro
 	}
 
 	bytesTotal := 0
-	filemap := make(map[string][]byte)
+	var files []FileInfo
 	var byteSource fs.FS
+
+	// Directories we've seen, to ensure we add them to the tar
+	seenDirs := make(map[string]bool)
 
 	add := func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			zap.L().Error("walk", zap.String("dir", dir.Path), zap.String("path", path), zap.Error(err))
 			if path == "." && d == nil && !dir.isFile {
-				zap.L().Info("To add a single file use a localFile layer istead of localDir", zap.String("path", dir.Path))
+				zap.L().Info("To add a single file use a localFile layer instead of localDir", zap.String("path", dir.Path))
 				return errors.New("localDir configured for what looks like a file: " + dir.Path)
 			}
 			return err
 		}
-		if d != nil && d.Type().IsDir() {
-			return nil
-		}
+
 		ignore, err := dir.Ignore.MatchesOrParentMatches(path)
 		if err != nil {
 			return err
@@ -101,9 +108,76 @@ func FromFilesystem(dir From, attributes schema.LayerAttributes) (v1.Layer, erro
 			zap.L().Debug("ignored", zap.String("path", path))
 			return nil
 		}
-		if dir.MaxFiles > 0 && len(filemap) >= dir.MaxFiles {
+
+		topath := dir.ContainerPath(path)
+
+		// Handle directory
+		if d != nil && d.Type().IsDir() {
+			if !seenDirs[topath] {
+				info, err := d.Info()
+				if err != nil {
+					return err
+				}
+				files = append(files, FileInfo{
+					Path:    topath,
+					Content: nil,
+					Mode:    info.Mode(),
+					IsDir:   true,
+					IsSymlink: false,
+				})
+				seenDirs[topath] = true
+			}
+			return nil
+		}
+
+		// Check file limits
+		if dir.MaxFiles > 0 && len(files) >= dir.MaxFiles {
 			return fmt.Errorf("number of files exceeds max from layer config: %d", dir.MaxFiles)
 		}
+
+		// Get file info for metadata
+		var fileInfo os.FileInfo
+		if d != nil {
+			var err error
+			fileInfo, err = d.Info()
+			if err != nil {
+				return err
+			}
+		}
+
+		// Handle symlinks
+		if fileInfo != nil && fileInfo.Mode()&os.ModeSymlink != 0 {
+			// For symlinks, we need to read the link target
+			linkTarget, err := os.Readlink(filepath.Join(dir.Path, path))
+			if err != nil {
+				return err
+			}
+
+			// Only preserve symlinks that point within the same source tree
+			if isWithinSourceTree(linkTarget, dir.Path) {
+				files = append(files, FileInfo{
+					Path:       topath,
+					Content:    nil,
+					Mode:       fileInfo.Mode(),
+					IsDir:      false,
+					IsSymlink:  true,
+					LinkTarget: linkTarget,
+				})
+				zap.L().Debug("added symlink",
+					zap.String("from", path),
+					zap.String("to", topath),
+					zap.String("target", linkTarget),
+				)
+			} else {
+				zap.L().Warn("skipping symlink pointing outside source tree",
+					zap.String("path", path),
+					zap.String("target", linkTarget),
+				)
+			}
+			return nil
+		}
+
+		// Handle regular files
 		file, err := fs.ReadFile(byteSource, path)
 		if err != nil {
 			return err
@@ -112,12 +186,25 @@ func FromFilesystem(dir From, attributes schema.LayerAttributes) (v1.Layer, erro
 		if dir.MaxSize > 0 && bytesTotal > dir.MaxSize {
 			return fmt.Errorf("accumulated file size %d exceeds max size from layer config: %d", bytesTotal, dir.MaxSize)
 		}
-		topath := dir.ContainerPath(path)
-		filemap[topath] = file
-		zap.L().Debug("added",
+
+		mode := os.FileMode(0644)
+		if fileInfo != nil {
+			mode = fileInfo.Mode()
+		}
+
+		files = append(files, FileInfo{
+			Path:      topath,
+			Content:   file,
+			Mode:      mode,
+			IsDir:     false,
+			IsSymlink: false,
+		})
+
+		zap.L().Debug("added file",
 			zap.String("from", path),
 			zap.String("to", topath),
 			zap.Int("size", len(file)),
+			zap.String("mode", mode.String()),
 		)
 
 		return nil
@@ -133,15 +220,26 @@ func FromFilesystem(dir From, attributes schema.LayerAttributes) (v1.Layer, erro
 	}
 
 	if err != nil {
-		zap.L().Error("layer buffer failed", zap.Int("files", len(filemap)), zap.Int("bytes", bytesTotal), zap.Error(err))
+		zap.L().Error("layer buffer failed", zap.Int("files", len(files)), zap.Int("bytes", bytesTotal), zap.Error(err))
 		return nil, err
 	}
-	zap.L().Info("layer buffer created", zap.Int("files", len(filemap)), zap.Int("bytes", bytesTotal))
+	zap.L().Info("layer buffer created", zap.Int("files", len(files)), zap.Int("bytes", bytesTotal))
 
-	if len(filemap) == 0 {
+	if len(files) == 0 {
 		return nil, fmt.Errorf("dir resulted in empty layer: %v", dir)
 	}
 
-	return Layer(filemap, attributes)
+	return LayerFromFiles(files, attributes)
+}
 
+// isWithinSourceTree checks if a symlink target points within the source tree
+func isWithinSourceTree(linkTarget, sourcePath string) bool {
+	// If the link target is absolute, it's outside our source tree
+	if filepath.IsAbs(linkTarget) {
+		return false
+	}
+
+	// For relative paths, we accept them (simple heuristic)
+	// TODO: Could be enhanced to resolve and check if it actually points within the tree
+	return true
 }
