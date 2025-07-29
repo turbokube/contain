@@ -24,7 +24,7 @@ const (
 )
 
 var (
-	publishVersion    = "0.5.5"
+	publishVersion    = "0.7.0"
 	releaseBinaryName = regexp.MustCompile(`^contain-v(?P<version>\d+\.\d+\.\d+)-(?P<os>[a-z0-9]+)-(?P<arch>[a-z0-9]+)(?P<ext>\.exe)?(?P<checksum>\.[a-z0-9]+)?$`)
 )
 
