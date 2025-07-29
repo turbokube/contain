@@ -21,9 +21,9 @@ jobs:
     -
       uses: actions/setup-go@v5
       with:
-        go-version: 1.22
+        go-version: 1.24
     -
-      uses: imjasonh/setup-crane@v0.3
+      uses: imjasonh/setup-crane@v0.4
     -
       uses: nolar/setup-k3d-k3s@v1.0.9
       with:
