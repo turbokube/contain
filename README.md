@@ -126,3 +126,53 @@ Currently Contain can't update attestations. Those index entries are therefore d
 ## Configuration
 
 Contain supports template variables in config yaml using the framework from [Skaffold](https://skaffold.dev/docs/environment/templating/).
+
+## Reproducible Builds
+
+Contain implements reproducible builds using deterministic layer creation:
+
+- **Timestamps**: All files and directories in layers use `SOURCE_DATE_EPOCH` (1970-01-01T00:00:00Z) for reproducible timestamps
+- **File Modes**: File permissions are normalized to 0644 for regular files and 0755 for directories by default
+- **Executable Preservation**: The executable bit (0111) is preserved from source files when present
+- **Mode Override**: Layer attributes can override the default file and directory modes
+- **Symlink Support**: Symbolic links pointing within the source tree are preserved with their target paths
+- **Directory Inclusion**: Directory entries are explicitly included in layers for complete filesystem representation
+
+### Mode Configuration
+
+You can override the default file and directory modes using layer attributes:
+
+```yaml
+layers:
+  - localDir:
+      path: ./build
+      containerPath: /app
+    layerAttributes:
+      mode: 0600        # Override file mode
+      dirMode: 0700     # Override directory mode
+      uid: 1000
+      gid: 1000
+```
+
+### Reproducible Layer Content
+
+The reproducible build implementation ensures that:
+
+1. **Identical source** produces **identical layers** regardless of build time or environment
+2. **File metadata** is normalized to prevent variations from filesystem differences
+3. **Directory structure** is completely captured including empty directories
+4. **Symlinks** are preserved when they point within the source tree
+5. **Build timestamps** do not affect layer checksums
+
+This enables reliable caching, content-addressable storage, and deterministic container image builds.
+
+## Migration to Reproducible Builds
+
+This version introduces major changes for reproducible builds that affect layer digests:
+
+- **Breaking Change**: All layer digests will change due to normalized timestamps and file modes
+- **Test Updates Required**: ExpectDigest values in integration tests need updating
+- **Backward Compatibility**: Configuration remains compatible, only layer content changes
+- **Benefits**: Builds are now deterministic across environments and time
+
+To update existing configurations, simply rebuild your images - the functionality remains the same but with improved reproducibility guarantees.
