@@ -86,7 +86,8 @@ build:
         npm install;
         npm run bundle;
         npm run spdx;
-        contain -x --file-output target/esbuild-main.json --metadata-file target/esbuild-main.buildctl.json;
+        cp target/spdx.json target/spdx.json.npm;
+        contain -x --file-output target/esbuild-main.json --metadata-file target/esbuild-main.buildctl.json --spdx-append target/spdx.json;
 
 test:
 - image: localdir1

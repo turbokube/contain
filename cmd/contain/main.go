@@ -14,6 +14,7 @@ import (
 	"github.com/turbokube/contain/pkg/run"
 	"github.com/turbokube/contain/pkg/schema"
 	schemav1 "github.com/turbokube/contain/pkg/schema/v1"
+	"github.com/turbokube/contain/pkg/spdx"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -36,6 +37,7 @@ var (
 	fileOutput   string
 	metadataFile string
 	platformsEnv bool
+	spdxAppend   string
 	tStart       = time.Now()
 )
 
@@ -82,6 +84,11 @@ func init() {
 		"platforms-env-require",
 		false,
 		fmt.Sprintf("requires env %s to be set, unless config specifies platforms", envPlatforms),
+	)
+	flag.StringVar(&spdxAppend,
+		"spdx-append",
+		"",
+		"wraps an SBOM (assumed to represent all layers) with base and result image",
 	)
 	flag.Usage = func() {
 		fmt.Fprintf(helpStream, "contain version: %s\n", BUILD)
@@ -300,5 +307,11 @@ func main() {
 	}
 
 	writeBuildOutput(buildOutput)
+
+	if spdxAppend != "" {
+		if err := spdx.AppendTo(spdxAppend, config, buildOutput); err != nil {
+			zap.L().Error("failed to append to spdx file", zap.Error(err))
+		}
+	}
 
 }
