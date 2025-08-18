@@ -1,13 +1,15 @@
 package spdx
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"regexp"
 	"sort"
 	"strings"
+
+	spdxjson "github.com/spdx/tools-golang/json"
+	"github.com/spdx/tools-golang/spdx"
+	common "github.com/spdx/tools-golang/spdx/v2/common"
 
 	"github.com/turbokube/contain/pkg/contain"
 	schemav1 "github.com/turbokube/contain/pkg/schema/v1"
@@ -15,6 +17,8 @@ import (
 
 const toolName = "contain"
 
+// AppendTo loads an SPDX JSON document, appends container image packages (base + build result),
+// ensures checksum for base digest, adds a creator Tool entry, and writes back JSON.
 func AppendTo(spdxFile string, config schemav1.ContainConfig, buildOutput *contain.BuildOutput, version string) error {
 	if config.Base == "" {
 		return fmt.Errorf("base image must be set to append to spdx file")
@@ -23,35 +27,22 @@ func AppendTo(spdxFile string, config schemav1.ContainConfig, buildOutput *conta
 		return fmt.Errorf("build output with at least one artifact required")
 	}
 
+	// read existing doc
 	f, err := os.Open(spdxFile)
 	if err != nil {
 		return fmt.Errorf("open spdx: %w", err)
 	}
 	defer f.Close()
-	b, err := io.ReadAll(f)
+	doc, err := spdxjson.Read(f)
 	if err != nil {
 		return fmt.Errorf("read spdx: %w", err)
 	}
 
-	var root map[string]any
-	if err := json.Unmarshal(b, &root); err != nil {
-		return fmt.Errorf("unmarshal spdx: %w", err)
-	}
-
-	// get packages slice (may be absent)
-	pkgsAny, ok := root["packages"].([]any)
-	if !ok {
-		pkgsAny = []any{}
-	}
-
-	hasContainerName := func(name string) bool {
-		for _, v := range pkgsAny {
-			if m, ok := v.(map[string]any); ok {
-				if purpose, _ := m["primaryPackagePurpose"].(string); purpose == "CONTAINER" {
-					if n, _ := m["name"].(string); n == name {
-						return true
-					}
-				}
+	// Build index of existing container package names
+	hasContainer := func(name string) bool {
+		for _, p := range doc.Packages {
+			if p != nil && p.PrimaryPackagePurpose == "CONTAINER" && p.PackageName == name {
+				return true
 			}
 		}
 		return false
@@ -64,32 +55,39 @@ func AppendTo(spdxFile string, config schemav1.ContainConfig, buildOutput *conta
 		baseName = baseNameFull[:i]
 		baseDigest = baseNameFull[i+len("@sha256:"):]
 	}
-	if !hasContainerName(baseName) {
-		entry := map[string]any{
-			"name":                  baseName,
-			"SPDXID":                makePackageID(baseName),
-			"primaryPackagePurpose": "CONTAINER",
-			"downloadLocation":      "NOASSERTION",
-			"filesAnalyzed":         false,
-			"homepage":              "NOASSERTION",
-			"licenseDeclared":       "NOASSERTION",
+
+	// helper to make checksum list
+	makeChecksums := func(d string) []common.Checksum {
+		if len(d) == 64 { // hex length
+			return []common.Checksum{{Algorithm: common.SHA256, Value: d}}
 		}
-		if len(baseDigest) == 64 { // add checksum if digest available
-			entry["checksums"] = []any{map[string]any{"algorithm": "SHA256", "checksumValue": baseDigest}}
+		return nil
+	}
+
+	// Add base package if missing
+	if !hasContainer(baseName) {
+		pkg := &spdx.Package{
+			PackageName:             baseName,
+			PackageSPDXIdentifier:   common.ElementID(makePackageID(baseName)),
+			PrimaryPackagePurpose:   "CONTAINER",
+			PackageDownloadLocation: "NOASSERTION",
+			FilesAnalyzed:           false,
+			PackageHomePage:         "NOASSERTION",
+			PackageLicenseDeclared:  "NOASSERTION",
+			PackageChecksums:        makeChecksums(baseDigest),
 		}
-		pkgsAny = append(pkgsAny, entry)
-	} else if baseDigest != "" {
-		// ensure checksum present for existing base package
-		for _, v := range pkgsAny {
-			m := v.(map[string]any)
-			if n, _ := m["name"].(string); n == baseName {
-				if _, ok := m["checksums"]; !ok && len(baseDigest) == 64 {
-					m["checksums"] = []any{map[string]any{"algorithm": "SHA256", "checksumValue": baseDigest}}
+		doc.Packages = append(doc.Packages, pkg)
+	} else if baseDigest != "" { // ensure checksum present on existing
+		for _, p := range doc.Packages {
+			if p.PackageName == baseName {
+				if p.PackageChecksums == nil || len(p.PackageChecksums) == 0 {
+					p.PackageChecksums = makeChecksums(baseDigest)
 				}
 			}
 		}
 	}
 
+	// result image name (include digest if not already)
 	result := buildOutput.Skaffold.Builds[0]
 	resultName := result.Tag
 	if !strings.Contains(resultName, "@sha256:") {
@@ -98,66 +96,55 @@ func AppendTo(spdxFile string, config schemav1.ContainConfig, buildOutput *conta
 			resultName = fmt.Sprintf("%s@%s:%s", result.ImageName, h.Algorithm, h.Hex)
 		}
 	}
-	if !hasContainerName(resultName) {
-		pkgsAny = append(pkgsAny, map[string]any{
-			"name":                  resultName,
-			"SPDXID":                makePackageID(resultName),
-			"primaryPackagePurpose": "CONTAINER",
-			"downloadLocation":      "NOASSERTION",
-			"filesAnalyzed":         false,
-			"homepage":              "NOASSERTION",
-			"licenseDeclared":       "NOASSERTION",
-		})
+	if !hasContainer(resultName) {
+		pkg := &spdx.Package{
+			PackageName:             resultName,
+			PackageSPDXIdentifier:   common.ElementID(makePackageID(resultName)),
+			PrimaryPackagePurpose:   "CONTAINER",
+			PackageDownloadLocation: "NOASSERTION",
+			FilesAnalyzed:           false,
+			PackageHomePage:         "NOASSERTION",
+			PackageLicenseDeclared:  "NOASSERTION",
+		}
+		doc.Packages = append(doc.Packages, pkg)
 	}
 
-	// reorder: keep non-container first in original order, then sort containers by name for determinism
-	var non, containers []map[string]any
-	for _, v := range pkgsAny {
-		m := v.(map[string]any)
-		if purpose, _ := m["primaryPackagePurpose"].(string); purpose == "CONTAINER" {
-			containers = append(containers, m)
+	// Reorder: non-container keep order, containers sorted by name
+	var non, containers []*spdx.Package
+	for _, p := range doc.Packages {
+		if p == nil || p.PrimaryPackagePurpose != "CONTAINER" {
+			non = append(non, p)
 		} else {
-			non = append(non, m)
+			containers = append(containers, p)
 		}
 	}
-	sort.Slice(containers, func(i, j int) bool {
-		ni, _ := containers[i]["name"].(string)
-		nj, _ := containers[j]["name"].(string)
-		return ni < nj
-	})
-	merged := make([]any, 0, len(pkgsAny))
-	for _, m := range non {
-		merged = append(merged, m)
-	}
-	for _, m := range containers {
-		merged = append(merged, m)
-	}
-	root["packages"] = merged
+	sort.Slice(containers, func(i, j int) bool { return containers[i].PackageName < containers[j].PackageName })
+	doc.Packages = append(append([]*spdx.Package{}, non...), containers...)
 
-	// ensure creators includes this tool
-	if ci, ok := root["creationInfo"].(map[string]any); ok {
-		creatorsRaw, _ := ci["creators"].([]any)
-		needle := fmt.Sprintf("Tool: %s-%s", toolName, version)
-		found := false
-		for _, c := range creatorsRaw {
-			if s, _ := c.(string); s == needle {
-				found = true
-				break
-			}
+	// Ensure creation info & creators
+	if doc.CreationInfo == nil {
+		doc.CreationInfo = &spdx.CreationInfo{}
+	}
+	toolValue := fmt.Sprintf("%s-%s", toolName, version)
+	present := false
+	for _, c := range doc.CreationInfo.Creators {
+		if c.CreatorType == "Tool" && c.Creator == toolValue {
+			present = true
+			break
 		}
-		if !found {
-			creatorsRaw = append(creatorsRaw, needle)
-			ci["creators"] = creatorsRaw
-		}
-	} else {
-		root["creationInfo"] = map[string]any{"creators": []any{fmt.Sprintf("Tool: %s-%s", toolName, version)}}
+	}
+	if !present {
+		doc.CreationInfo.Creators = append(doc.CreationInfo.Creators, common.Creator{CreatorType: "Tool", Creator: toolValue})
 	}
 
-	out, err := json.MarshalIndent(root, "", "  ")
+	// write back
+	// write back
+	out, err := os.Create(spdxFile)
 	if err != nil {
-		return fmt.Errorf("marshal spdx: %w", err)
+		return fmt.Errorf("create spdx: %w", err)
 	}
-	if err := os.WriteFile(spdxFile, out, 0o644); err != nil {
+	defer out.Close()
+	if err := spdxjson.Write(doc, out); err != nil {
 		return fmt.Errorf("write spdx: %w", err)
 	}
 	return nil
