@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "bundle": "esbuild --platform=node --target=es2022 --bundle --sourcemap=linked --sources-content=false --outdir=target/ --entry-names=[dir]/main.bundle --metafile=target/meta.json src/main.js"
+    "bundle": "esbuild --platform=node --target=es2022 --bundle --sourcemap=linked --sources-content=false --outdir=target/ --entry-names=[dir]/main.bundle --metafile=target/meta.json src/main.js",
+    "spdx": "npm sbom --sbom-format=spdx --package-lock-only --omit=dev --sbom-type=application > target/spdx.json"
   },
   "author": "",
   "license": "UNLICENSED",

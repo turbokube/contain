@@ -48,7 +48,7 @@ localtest1_arm64=$(crane --platform=linux/arm64 digest $localtest1)
 
 # Test buildctl metadata files
 echo "=> Testing buildctl metadata files..."
-for buildctl_file in test/out/localdir.buildctl.json test/out/localdir-app.buildctl.json test/out/contextdir-app.buildctl.json; do
+for buildctl_file in test/out/localdir.buildctl.json test/out/localdir-app.buildctl.json test/out/contextdir-app.buildctl.json test/esbuild-main/target/esbuild-main.buildctl.json; do
   [ -f "$buildctl_file" ] || {
     echo "Error: buildctl metadata file $buildctl_file was not created"
     exit 1

@@ -79,6 +79,14 @@ build:
     context: ./test
     custom:
       buildCommand: contain -x -c onefile.contain.yaml --file-output out/onefile.json
+  - image: esbuild-main
+    context: ./test/esbuild-main
+    custom:
+      buildCommand: >-
+        npm install;
+        npm run bundle;
+        npm run spdx;
+        contain -x --file-output target/esbuild-main.json --metadata-file target/esbuild-main.buildctl.json;
 
 test:
 - image: localdir1
@@ -114,3 +122,6 @@ test:
 - image: onefile
   structureTests:
   - ./test/onefile.test.yaml
+- image: esbuild-main
+  structureTests:
+  - ./test/esbuild-main.test.yaml
