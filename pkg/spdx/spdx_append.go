@@ -13,7 +13,9 @@ import (
 	schemav1 "github.com/turbokube/contain/pkg/schema/v1"
 )
 
-func AppendTo(spdxFile string, config schemav1.ContainConfig, buildOutput *contain.BuildOutput) error {
+const toolName = "contain"
+
+func AppendTo(spdxFile string, config schemav1.ContainConfig, buildOutput *contain.BuildOutput, version string) error {
 	if config.Base == "" {
 		return fmt.Errorf("base image must be set to append to spdx file")
 	}
@@ -46,25 +48,46 @@ func AppendTo(spdxFile string, config schemav1.ContainConfig, buildOutput *conta
 		for _, v := range pkgsAny {
 			if m, ok := v.(map[string]any); ok {
 				if purpose, _ := m["primaryPackagePurpose"].(string); purpose == "CONTAINER" {
-					if n, _ := m["name"].(string); n == name { return true }
+					if n, _ := m["name"].(string); n == name {
+						return true
+					}
 				}
 			}
 		}
 		return false
 	}
 
-	baseName := config.Base
-	if i := strings.Index(baseName, "@sha256:"); i != -1 { baseName = baseName[:i] }
+	baseNameFull := config.Base
+	baseName := baseNameFull
+	var baseDigest string
+	if i := strings.Index(baseNameFull, "@sha256:"); i != -1 {
+		baseName = baseNameFull[:i]
+		baseDigest = baseNameFull[i+len("@sha256:"):]
+	}
 	if !hasContainerName(baseName) {
-		pkgsAny = append(pkgsAny, map[string]any{
-			"name": baseName,
-			"SPDXID": makePackageID(baseName),
+		entry := map[string]any{
+			"name":                  baseName,
+			"SPDXID":                makePackageID(baseName),
 			"primaryPackagePurpose": "CONTAINER",
-			"downloadLocation": "NOASSERTION",
-			"filesAnalyzed": false,
-			"homepage": "NOASSERTION",
-			"licenseDeclared": "NOASSERTION",
-		})
+			"downloadLocation":      "NOASSERTION",
+			"filesAnalyzed":         false,
+			"homepage":              "NOASSERTION",
+			"licenseDeclared":       "NOASSERTION",
+		}
+		if len(baseDigest) == 64 { // add checksum if digest available
+			entry["checksums"] = []any{map[string]any{"algorithm": "SHA256", "checksumValue": baseDigest}}
+		}
+		pkgsAny = append(pkgsAny, entry)
+	} else if baseDigest != "" {
+		// ensure checksum present for existing base package
+		for _, v := range pkgsAny {
+			m := v.(map[string]any)
+			if n, _ := m["name"].(string); n == baseName {
+				if _, ok := m["checksums"]; !ok && len(baseDigest) == 64 {
+					m["checksums"] = []any{map[string]any{"algorithm": "SHA256", "checksumValue": baseDigest}}
+				}
+			}
+		}
 	}
 
 	result := buildOutput.Skaffold.Builds[0]
@@ -77,13 +100,13 @@ func AppendTo(spdxFile string, config schemav1.ContainConfig, buildOutput *conta
 	}
 	if !hasContainerName(resultName) {
 		pkgsAny = append(pkgsAny, map[string]any{
-			"name": resultName,
-			"SPDXID": makePackageID(resultName),
+			"name":                  resultName,
+			"SPDXID":                makePackageID(resultName),
 			"primaryPackagePurpose": "CONTAINER",
-			"downloadLocation": "NOASSERTION",
-			"filesAnalyzed": false,
-			"homepage": "NOASSERTION",
-			"licenseDeclared": "NOASSERTION",
+			"downloadLocation":      "NOASSERTION",
+			"filesAnalyzed":         false,
+			"homepage":              "NOASSERTION",
+			"licenseDeclared":       "NOASSERTION",
 		})
 	}
 
@@ -103,12 +126,37 @@ func AppendTo(spdxFile string, config schemav1.ContainConfig, buildOutput *conta
 		return ni < nj
 	})
 	merged := make([]any, 0, len(pkgsAny))
-	for _, m := range non { merged = append(merged, m) }
-	for _, m := range containers { merged = append(merged, m) }
+	for _, m := range non {
+		merged = append(merged, m)
+	}
+	for _, m := range containers {
+		merged = append(merged, m)
+	}
 	root["packages"] = merged
 
+	// ensure creators includes this tool
+	if ci, ok := root["creationInfo"].(map[string]any); ok {
+		creatorsRaw, _ := ci["creators"].([]any)
+		needle := fmt.Sprintf("Tool: %s-%s", toolName, version)
+		found := false
+		for _, c := range creatorsRaw {
+			if s, _ := c.(string); s == needle {
+				found = true
+				break
+			}
+		}
+		if !found {
+			creatorsRaw = append(creatorsRaw, needle)
+			ci["creators"] = creatorsRaw
+		}
+	} else {
+		root["creationInfo"] = map[string]any{"creators": []any{fmt.Sprintf("Tool: %s-%s", toolName, version)}}
+	}
+
 	out, err := json.MarshalIndent(root, "", "  ")
-	if err != nil { return fmt.Errorf("marshal spdx: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal spdx: %w", err)
+	}
 	if err := os.WriteFile(spdxFile, out, 0o644); err != nil {
 		return fmt.Errorf("write spdx: %w", err)
 	}

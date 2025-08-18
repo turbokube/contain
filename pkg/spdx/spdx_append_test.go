@@ -89,8 +89,12 @@ const exampleSPDX = `{
 
 // minimal structure for assertions
 type pkg struct {
-	Name    string `json:"name"`
-	Purpose string `json:"primaryPackagePurpose"`
+	Name      string `json:"name"`
+	Purpose   string `json:"primaryPackagePurpose"`
+	Checksums []struct {
+		Algorithm string `json:"algorithm"`
+		Value     string `json:"checksumValue"`
+	} `json:"checksums"`
 }
 type relationship struct {
 	Type string `json:"relationshipType"`
@@ -98,6 +102,9 @@ type relationship struct {
 type doc struct {
 	Packages      []pkg          `json:"packages"`
 	Relationships []relationship `json:"relationships"`
+	CreationInfo  struct {
+		Creators []string `json:"creators"`
+	} `json:"creationInfo"`
 }
 
 func TestAppendToAddsContainerImages(t *testing.T) {
@@ -114,7 +121,7 @@ func TestAppendToAddsContainerImages(t *testing.T) {
 
 	cfg := v1.ContainConfig{Base: "example.net/misc/base-image:abc@sha256:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"}
 
-	err = spdx.AppendTo(spdxFile, cfg, buildOutput)
+	err = spdx.AppendTo(spdxFile, cfg, buildOutput, "testver")
 	g.Expect(err).NotTo(HaveOccurred())
 
 	raw, err := os.ReadFile(spdxFile)
@@ -142,16 +149,33 @@ func TestAppendToAddsContainerImages(t *testing.T) {
 	g.Expect(hasDependency).To(BeTrue(), "existing relationships must be preserved")
 
 	// check base exact and result pattern
-	var baseFound, resultFound bool
+	var baseFound, resultFound, baseChecksum bool
 	reResult := regexp.MustCompile(`^example\.net/misc/result-image:cde@sha256:[0-9a-f]{64}$`)
-	for _, name := range containers {
-		if name == "example.net/misc/base-image:abc" {
-			baseFound = true
-		}
-		if reResult.MatchString(name) {
-			resultFound = true
+	for _, p := range d.Packages {
+		if p.Purpose == "CONTAINER" {
+			if p.Name == "example.net/misc/base-image:abc" {
+				baseFound = true
+				for _, c := range p.Checksums {
+					if c.Algorithm == "SHA256" && len(c.Value) == 64 {
+						baseChecksum = true
+					}
+				}
+			}
+			if reResult.MatchString(p.Name) {
+				resultFound = true
+			}
 		}
 	}
 	g.Expect(baseFound).To(BeTrue(), "base image container package missing")
 	g.Expect(resultFound).To(BeTrue(), "result image container package with digest missing")
+	g.Expect(baseChecksum).To(BeTrue(), "base image digest checksum missing from SPDX")
+
+	// creators must include contain tool with version
+	var creatorsMatch bool
+	for _, c := range d.CreationInfo.Creators {
+		if c == "Tool: contain-testver" {
+			creatorsMatch = true
+		}
+	}
+	g.Expect(creatorsMatch).To(BeTrue(), "creators missing Tool: contain-testver entry")
 }

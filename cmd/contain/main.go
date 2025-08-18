@@ -309,7 +309,7 @@ func main() {
 	writeBuildOutput(buildOutput)
 
 	if spdxAppend != "" {
-		if err := spdx.AppendTo(spdxAppend, config, buildOutput); err != nil {
+		if err := spdx.AppendTo(spdxAppend, config, buildOutput, BUILD); err != nil {
 			zap.L().Error("failed to append to spdx file", zap.Error(err))
 		}
 	}
