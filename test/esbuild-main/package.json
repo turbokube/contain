@@ -1,0 +1,18 @@
+{
+  "name": "contain-test-esbuild-main",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "bundle": "esbuild --platform=node --target=es2022 --bundle --sourcemap=linked --sources-content=false --outdir=target/ --entry-names=[dir]/main.bundle --metafile=target/meta.json src/main.js"
+  },
+  "author": "",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "hono": "4.9.2",
+    "@hono/node-server": "1.19.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.9"
+  }
+}
