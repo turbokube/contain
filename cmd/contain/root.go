@@ -14,6 +14,8 @@ var (
 	BUILD   = "development"
 	debug   bool
 	version bool
+	// indicates root invocation without explicit subcommand (for deprecation warning)
+	implicitRoot bool
 	// timing
 	tStart = time.Now()
 	// build flags
@@ -34,6 +36,7 @@ var rootCmd = &cobra.Command{
 	Short:        "contain image build tool",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error { // default to build
+		implicitRoot = true
 		return runBuild(args)
 	},
 }

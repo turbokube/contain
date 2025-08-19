@@ -23,6 +23,10 @@ func runBuild(args []string) error {
 		return nil
 	}
 
+	if implicitRoot {
+		fmt.Fprintf(os.Stderr, "[deprecation] invoking 'contain' without an explicit subcommand is deprecated; use 'contain build' instead. This fallback will be removed in a future release.\n")
+	}
+
 	consoleDebugging := zapcore.Lock(os.Stderr)
 	consoleEncoder := zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig())
 	consoleEnabler := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool { return debug || lvl != zapcore.DebugLevel })
@@ -94,14 +98,14 @@ func runBuild(args []string) error {
 			zap.L().Debug("read IMAGE env", zap.String("tag", image))
 			config.Tag = image
 		} else {
-		repo, repoExists := os.LookupEnv("IMAGE_REPO")
-		rtag, rtagExists := os.LookupEnv("IMAGE_TAG")
-		if repoExists && rtagExists {
-			config.Tag = fmt.Sprintf("%s:%s", repo, rtag)
-			zap.L().Debug("read IMAGE_REPO and IMAGE_TAG env", zap.String("tag", config.Tag))
-		} else {
-			zap.L().Fatal("config tag must be set, or env IMAGE, or envs IMAGE_REPO and IMAGE_TAG")
-		}
+			repo, repoExists := os.LookupEnv("IMAGE_REPO")
+			rtag, rtagExists := os.LookupEnv("IMAGE_TAG")
+			if repoExists && rtagExists {
+				config.Tag = fmt.Sprintf("%s:%s", repo, rtag)
+				zap.L().Debug("read IMAGE_REPO and IMAGE_TAG env", zap.String("tag", config.Tag))
+			} else {
+				zap.L().Fatal("config tag must be set, or env IMAGE, or envs IMAGE_REPO and IMAGE_TAG")
+			}
 		}
 	}
 
