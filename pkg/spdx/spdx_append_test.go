@@ -179,3 +179,27 @@ func TestAppendToAddsContainerImages(t *testing.T) {
 	}
 	g.Expect(creatorsMatch).To(BeTrue(), "creators missing Tool: contain-testver entry")
 }
+
+func TestAppendToPrettyPrinted(t *testing.T) {
+	g := NewWithT(t)
+
+	tmp := t.TempDir()
+	spdxFile := filepath.Join(tmp, "spdx.json")
+	g.Expect(os.WriteFile(spdxFile, []byte(exampleSPDX), 0o644)).To(Succeed())
+
+	digest := v1hash.Hash{Algorithm: "sha256", Hex: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
+	buildOutput, err := contain.NewBuildOutput("example.net/misc/result-image:cde", digest)
+	g.Expect(err).NotTo(HaveOccurred())
+	cfg := v1.ContainConfig{Base: "example.net/misc/base-image:abc@sha256:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"}
+
+	g.Expect(spdx.AppendTo(spdxFile, cfg, buildOutput, "testver")).To(Succeed())
+
+	raw, err := os.ReadFile(spdxFile)
+	g.Expect(err).NotTo(HaveOccurred())
+	content := string(raw)
+
+	// Expect pretty-print: opening brace then newline, then two-space indented key
+	g.Expect(content).To(MatchRegexp(`(?m)^\{\n  "spdxVersion":`), "expected indented JSON after first line")
+	// Ensure there's at least one line that starts with two spaces and a quote indicating indentation is applied broadly
+	g.Expect(content).To(MatchRegexp(`(?m)^  "packages":`), "expected packages key to be indented with two spaces")
+}

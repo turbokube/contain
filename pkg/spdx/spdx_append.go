@@ -137,14 +137,11 @@ func AppendTo(spdxFile string, config schemav1.ContainConfig, buildOutput *conta
 		doc.CreationInfo.Creators = append(doc.CreationInfo.Creators, common.Creator{CreatorType: "Tool", Creator: toolValue})
 	}
 
-	// write back
-	// write back
+	// write with indentation using WriteOption
 	out, err := os.Create(spdxFile)
-	if err != nil {
-		return fmt.Errorf("create spdx: %w", err)
-	}
+	if err != nil { return fmt.Errorf("create spdx: %w", err) }
 	defer out.Close()
-	if err := spdxjson.Write(doc, out); err != nil {
+	if err := spdxjson.Write(doc, out, spdxjson.Indent("  ")); err != nil {
 		return fmt.Errorf("write spdx: %w", err)
 	}
 	return nil
