@@ -7,6 +7,21 @@ Produces a container image from a local directory structure and a base image.
 
 It runs nicely with [Skaffold](https://skaffold.dev/) as [custom](https://skaffold.dev/docs/builders/builder-types/custom/) `buildCommand`, as it picks up the `IMAGE` and `PLATFORMS` envs.
 
+## commands
+
+The CLI now has sub-commands (migrated to [cobra](https://github.com/spf13/cobra)):
+
+- `contain build` – existing build/append functionality (also the default when you invoke just `contain ...` for backwards compatibility).
+- `contain sbom` – experimental stub that will generate a Software Bill of Materials from a build metadata file in future versions. Currently it just echoes the provided `--build-metadata` path.
+
+Examples (old style still works):
+
+```
+contain -x -b busybox:latest --file-output out.json
+contain build -x -b busybox:latest --file-output out.json
+contain sbom --build-metadata out/localdir.buildctl.json
+```
+
 
 ## basics
 

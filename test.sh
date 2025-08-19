@@ -16,7 +16,7 @@ $DOCKER inspect $REGISTRY_NAME 2>/dev/null >/dev/null ||
   $DOCKER run --rm -d -p 22500:5000 --name $REGISTRY_NAME registry:2
 
 mkdir -p dist/test
-go build -ldflags="-X main.BUILD=test-$(uname -m)" -o dist/test/contain cmd/contain/main.go
+go build -ldflags="-X main.BUILD=test-$(uname -m)" -o dist/test/contain ./cmd/contain
 export PATH=$(pwd)/dist/test:$PATH
 
 contain --version 2>&1 | grep '^test-'
