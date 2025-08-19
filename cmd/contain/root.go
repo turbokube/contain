@@ -5,10 +5,11 @@ import (
 )
 
 var (
-	BUILD       = "development"
-	debug       bool
-	version     bool
+	BUILD        = "development"
+	debug        bool
+	version      bool
 	implicitRoot bool // set when root invoked without subcommand
+	loggerMode   string
 )
 
 var rootCmd = &cobra.Command{
@@ -24,8 +25,10 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&debug, "x", "x", false, "logs at debug level")
 	rootCmd.PersistentFlags().BoolVar(&version, "version", false, "print build version and exit")
+	rootCmd.PersistentFlags().StringVar(&loggerMode, "logger", "dev", "logger mode: dev|plain")
 
 	rootCmd.AddCommand(newBuildCmd())
 	rootCmd.AddCommand(newSbomCmd())
 }
-	// build subcommand is defined in build.go via newBuildCmd()
+
+// build subcommand is defined in build.go via newBuildCmd()

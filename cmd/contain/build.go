@@ -16,7 +16,6 @@ import (
 	"github.com/turbokube/contain/pkg/schema"
 	schemav1 "github.com/turbokube/contain/pkg/schema/v1"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 const envPlatforms = "PLATFORMS"
@@ -70,11 +69,7 @@ func runBuild(args []string) error {
 		fmt.Fprintf(os.Stderr, "[deprecation] invoking 'contain' without an explicit subcommand is deprecated; use 'contain build' instead. This fallback will be removed in a future release.\n")
 	}
 
-	consoleDebugging := zapcore.Lock(os.Stderr)
-	consoleEncoder := zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig())
-	consoleEnabler := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool { return debug || lvl != zapcore.DebugLevel })
-	core := zapcore.NewCore(consoleEncoder, consoleDebugging, consoleEnabler)
-	logger := zap.New(core)
+	logger := newLogger()
 	defer logger.Sync()
 	undo := zap.ReplaceGlobals(logger)
 	defer undo()

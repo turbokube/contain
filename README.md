@@ -22,6 +22,35 @@ contain build -x -b busybox:latest --file-output out.json
 contain sbom --build-metadata out/localdir.buildctl.json
 ```
 
+## sbom subcommand
+
+`contain sbom` is a CLI to produces an _application_ SBOM in SPDX format from:
+
+1. an SBOM file from CI such as
+
+  - [npm sbom](https://docs.npmjs.com/cli/v10/commands/npm-sbom) output
+  - [mvn spdx:createSPDX](https://github.com/spdx/spdx-maven-plugin) output
+
+2. a container image build result such as
+
+  - [skaffold build](https://skaffold.dev/docs/references/cli/#skaffold-build) `--file-output`
+  - [buildctl build](https://github.com/moby/buildkit/blob/master/docs/reference/buildctl.md) `--metadata-file`
+  - [contain build]() `--file-output` or `--metadata-file`
+
+3. and optionally a base image ref
+
+  - otherwise autodetected from the `org.opencontainers.image.base.name` annotation (also used by for example [go-containeregistry](https://github.com/google/go-containerregistry/blob/v0.20.6/cmd/crane/rebase.md#base-image-annotation-hints))
+
+The resulting SPDX fully describes your deliverabe,
+if your image builds only deal with appending artifacts to base images.
+That's the principle of [contain]().
+
+## libs
+
+https://pkg.go.dev/github.com/spdx/tools-golang
+https://pkg.go.dev/sigs.k8s.io/bom
+https://pkg.go.dev/github.com/ibm/sbom-utility
+
 
 ## basics
 
