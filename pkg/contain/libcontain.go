@@ -6,6 +6,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/turbokube/contain/pkg/annotate"
 	"github.com/turbokube/contain/pkg/appender"
 	"github.com/turbokube/contain/pkg/layers"
 	"github.com/turbokube/contain/pkg/multiarch"
@@ -104,7 +105,12 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, 
 			zap.L().Error("appender", zap.Error(err))
 			return mutate.IndexAddendum{}, err
 		}
-		// todo WithAnnotate?
+		// Set base image annotation hints as per crane rebase docs
+		if ann, err := annotate.NewBaseImageAnnotations(config.Base); err == nil {
+			a.WithAnnotate(ann)
+		} else {
+			zap.L().Error("base image annotations", zap.Error(err))
+		}
 		r, err := a.Append(layers...)
 		if err != nil {
 			zap.L().Error("append", zap.Error(err))
