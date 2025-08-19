@@ -105,7 +105,12 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, 
 			zap.L().Error("appender", zap.Error(err))
 			return mutate.IndexAddendum{}, err
 		}
-		// todo WithAnnotate?
+		// Set base image annotation hints as per crane rebase docs
+		if ann, err := annotate.NewBaseImageAnnotations(config.Base); err == nil {
+			a.WithAnnotate(ann)
+		} else {
+			zap.L().Error("base image annotations", zap.Error(err))
+		}
 		r, err := a.Append(layers...)
 		if err != nil {
 			zap.L().Error("append", zap.Error(err))

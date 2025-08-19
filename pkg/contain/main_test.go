@@ -40,6 +40,10 @@ func TestMain(m *testing.M) {
 	testRegistry = r.Host
 	testCraneOptions = &r.Config.CraneOptions
 
+	// Provide deterministic base image name annotation independent of ephemeral registry port.
+	// Updated to localhost:12345 to regenerate stable expected digests.
+	os.Setenv("CONTAIN_ANNOTATIONS_BASE_REGISTRY_HOST_OVERRIDE", "localhost:12345")
+
 	code := m.Run()
 	os.Exit(code)
 }
