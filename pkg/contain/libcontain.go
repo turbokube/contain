@@ -6,6 +6,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/turbokube/contain/pkg/annotate"
 	"github.com/turbokube/contain/pkg/appender"
 	"github.com/turbokube/contain/pkg/layers"
 	"github.com/turbokube/contain/pkg/multiarch"

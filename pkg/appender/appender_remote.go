@@ -169,7 +169,9 @@ func (c *Appender) Append(layers ...v1.Layer) (AppendResult, error) {
 	appendable := mutate.IndexAddendum{
 		Add: img,
 		Descriptor: v1.Descriptor{
-			Platform: baseConfig.Platform(),
+			MediaType: types.OCIManifestSchema1,
+			Digest:    imgDigest,
+			Platform:  baseConfig.Platform(),
 		},
 	}
 	result := AppendResult{
