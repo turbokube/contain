@@ -9,7 +9,6 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/types"
-	"github.com/turbokube/contain/pkg/appender"
 	"github.com/turbokube/contain/pkg/registry"
 	schema "github.com/turbokube/contain/pkg/schema/v1"
 	"go.uber.org/zap"
@@ -237,7 +236,7 @@ func (m *IndexManifests) BaseRef() name.Digest {
 	return m.baseRef
 }
 
-func (m *IndexManifests) PushWithAppend(append EachAppend, tagRef name.Reference, tagRegistry *registry.RegistryConfig) (v1.Hash, error) {
+func (m *IndexManifests) PushWithAppend(append EachAppend, tagRef name.Reference, tagRegistry *registry.RegistryConfig) (Pushed, error) {
 	var manifests = make([]mutate.IndexAddendum, len(m.toAppend))
 	for i, c := range m.toAppend {
 		if c.meta.Digest != noDigestYet {
@@ -247,7 +246,7 @@ func (m *IndexManifests) PushWithAppend(append EachAppend, tagRef name.Reference
 		manifests[i], err = append(c.base, tagRef, tagRegistry)
 		if err != nil {
 			zap.L().Error("append", zap.Int("item", i), zap.Any("base", c), zap.Error(err))
-			return v1.Hash{}, err
+			return NewPushedNothing(err)
 		}
 	}
 	resultIndex := mutate.AppendManifests(m.indexStart, manifests...)
@@ -257,7 +256,7 @@ func (m *IndexManifests) PushWithAppend(append EachAppend, tagRef name.Reference
 	resultTaggable, err := NewTaggableIndex(resultIndex)
 	if err != nil {
 		zap.L().Error("taggable", zap.Any("index", resultIndex), zap.Error(err))
-		return v1.Hash{}, err
+		return NewPushedNothing(err)
 	}
 	for _, added := range manifests {
 		zap.L().Debug("index entry addded",
@@ -268,7 +267,7 @@ func (m *IndexManifests) PushWithAppend(append EachAppend, tagRef name.Reference
 	err = remote.Put(tagRef, resultTaggable, tagRegistry.CraneOptions.Remote...)
 	if err != nil {
 		zap.L().Error("index put", zap.Any("ref", tagRef), zap.Error(err))
-		return v1.Hash{}, err
+		return NewPushedNothing(err)
 	}
-	return resultIndex.Digest()
+	return NewPushedIndex(resultIndex)
 }

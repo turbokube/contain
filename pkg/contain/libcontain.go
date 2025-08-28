@@ -70,6 +70,23 @@ func RunLayers(config schemav1.ContainConfig) ([]v1.Layer, error) {
 
 }
 
+func NewPushedSingleImage(pushed *mutate.IndexAddendum) (multiarch.Pushed, error) {
+	mediaType, err := pushed.Add.MediaType()
+	if err != nil {
+		zap.L().Error("single image push image mediaType", zap.Error(err))
+		return multiarch.NewPushedNothing(err)
+	}
+	resultHash, err := pushed.Add.Digest()
+	if err != nil {
+		zap.L().Error("single image push image digest", zap.Error(err))
+		return multiarch.NewPushedNothing(err)
+	}
+	return multiarch.Pushed{
+		MediaType: mediaType,
+		Digest:    resultHash,
+	}, nil
+}
+
 // RunAppend is the remote access part of a run
 func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, error) {
 	// source repo can differ from destination repo, we should probably struct tag + remote config
@@ -119,11 +136,11 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, 
 		return r.Pushed, nil
 	}
 
-	var resultHash v1.Hash
+	var result multiarch.Pushed
 	var singlePlatformResult *mutate.IndexAddendum // Store for metadata extraction
 
 	if index.SizeAppend() > 1 {
-		resultHash, err = index.PushWithAppend(each, buildOutputTag, tagRegistry)
+		result, err = index.PushWithAppend(each, buildOutputTag, tagRegistry)
 		if err != nil {
 			zap.L().Error("index push", zap.Error(err))
 			return nil, err
@@ -138,12 +155,11 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, 
 			return nil, err
 		}
 		singlePlatformResult = &pushed
-		resultHash, err = pushed.Add.Digest()
+		result, err = NewPushedSingleImage(&pushed)
 		if err != nil {
-			zap.L().Error("single image push image digest", zap.Error(err))
 			return nil, err
 		}
-		zap.L().Info("single platform", zap.String("tag", buildOutputTag.String()), zap.String("hash", resultHash.String()))
+		zap.L().Info("single platform", zap.String("tag", buildOutputTag.String()), zap.String("hash", result.Digest.String()))
 	}
 
 	// todo multi-arch index from prototype result to result index
@@ -156,17 +172,17 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, 
 		if image, ok := singlePlatformResult.Add.(v1.Image); ok {
 			buildOutput, err = NewBuildOutputWithMetadata(
 				buildOutputTag.String(),
-				resultHash,
+				result.Digest,
 				image,
 				singlePlatformResult.Descriptor.Platform,
 			)
 		} else {
 			// Fallback if casting fails
-			buildOutput, err = NewBuildOutput(buildOutputTag.String(), resultHash)
+			buildOutput, err = NewBuildOutput(buildOutputTag.String(), result.Digest)
 		}
 	} else {
 		// Fallback for multi-platform builds (limited metadata)
-		buildOutput, err = NewBuildOutput(buildOutputTag.String(), resultHash)
+		buildOutput, err = NewBuildOutput(buildOutputTag.String(), result.Digest)
 	}
 	if err != nil {
 		zap.L().Error("buildOutput", zap.Error(err))
