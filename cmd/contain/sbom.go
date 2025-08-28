@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/turbokube/contain/pkg/sbom"
 	"go.uber.org/zap"
 )
 
@@ -32,5 +31,7 @@ func runSbom(cmd *cobra.Command, args []string) error { //nolint:revive,unused
 	undo := zap.ReplaceGlobals(logger)
 	defer undo()
 
-	return sbom.Generate(sbomBuildMetadata)
+	zap.L().Info("TODO implement SBOM wrapping, possibly alongsite SBOM directly from build")
+
+	return nil
 }
