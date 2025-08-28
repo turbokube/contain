@@ -1,5 +1,6 @@
 package contain
 
+// Platform, in buildctl metadata output, drops the "/v8" in linux/arm64/v8
 type Platform struct {
 	Architecture string `json:"architecture"`
 	OS           string `json:"os"`
@@ -17,4 +18,5 @@ type MetadataSimilarToBuildctlFile struct {
 	ContainerImageDescriptor   ContainerImageDescriptor `json:"containerimage.descriptor"`
 	ContainerImageDigest       string                   `json:"containerimage.digest"`
 	ImageName                  string                   `json:"image.name"`
+	// TODO Annotations                map[string]string        `json:"annotations,omitempty"`
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/distribution/reference"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/turbokube/contain/pkg/multiarch"
 	"go.uber.org/zap"
 )
 
@@ -19,6 +20,9 @@ type BuildOutput struct {
 	Buildctl *MetadataSimilarToBuildctlFile `json:"buildctl,omitempty"`
 	// Trace is internal, doesn't need to match the output of any other tool
 	Trace *BuildTrace `json:"trace,omitempty"`
+	// For multi-arch (index) images, neither skaffold nor buildctl writes platforms
+	// each platform should be a
+	Platforms []string `json:"platforms,omitempty"`
 }
 
 type BuildOutputSkaffold struct {
@@ -60,26 +64,45 @@ func (a *Artifact) Http() ArtifactHttp {
 	}
 }
 
+func toPlatforms(platforms []v1.Platform) []string {
+	if len(platforms) == 0 {
+		return nil // works with omitempty
+	}
+	result := make([]string, 0, len(platforms))
+	for _, pf := range platforms {
+		result = append(result, pf.String())
+	}
+	return result
+}
+
+// TODO now that the Pushed struct has been introduced we should be able to
+// merge NewBuildOutput and NewBuildOutputWithMetadata + adapt things like descriptor.platform to mediaType
+
 // NewBuildOutput takes tag from config.Tag wich is name:tag and
 // hash from for example append to produce build output for a single image.
-func NewBuildOutput(tag string, hash v1.Hash) (*BuildOutput, error) {
-	a, err := newArtifact(tag, hash)
+func NewBuildOutput(tag string, pushed multiarch.Pushed) (*BuildOutput, error) {
+	a, err := newArtifact(tag, pushed.Digest)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create metadata for buildctl format - we'll need more information later
 	metadata := &MetadataSimilarToBuildctlFile{
-		ContainerImageDigest: hash.String(),
+		ContainerImageDigest: pushed.Digest.String(),
 		ImageName:            tag,
-		// TODO: Add more complete metadata when available from AppendResult
+		ContainerImageDescriptor: ContainerImageDescriptor{
+			MediaType: string(pushed.MediaType),
+			Digest:    pushed.Digest.String(),
+			// Platform is singular and buildctl doesn't populate it for application/vnd.oci.image.manifest.v1+json
+		},
 	}
 
 	return &BuildOutput{
 		Skaffold: &BuildOutputSkaffold{
 			Builds: []Artifact{*a},
 		},
-		Buildctl: metadata,
+		Buildctl:  metadata,
+		Platforms: toPlatforms(pushed.Platforms),
 	}, nil
 }
 
@@ -126,7 +149,7 @@ func NewBuildOutputWithMetadata(tag string, hash v1.Hash, image v1.Image, platfo
 			Size:      int(size),
 		}
 
-		// Set platform information
+		// Note that buildctl only writes platform for single-arch images
 		if platform != nil {
 			metadata.ContainerImageDescriptor.Platform = Platform{
 				Architecture: platform.Architecture,
@@ -140,6 +163,8 @@ func NewBuildOutputWithMetadata(tag string, hash v1.Hash, image v1.Image, platfo
 			Builds: []Artifact{*a},
 		},
 		Buildctl: metadata,
+		// not sure why platform is a pointer here
+		Platforms: toPlatforms([]v1.Platform{*platform}),
 	}, nil
 }
 

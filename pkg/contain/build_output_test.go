@@ -7,6 +7,7 @@ import (
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/turbokube/contain/pkg/contain"
+	"github.com/turbokube/contain/pkg/multiarch"
 )
 
 func TestBuildOutput(t *testing.T) {
@@ -14,9 +15,13 @@ func TestBuildOutput(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+	p1 := multiarch.Pushed{
+		MediaType: "application/vnd.oci.image.manifest.v1+json",
+		Digest:    h1,
+	}
 
 	t.Run("image with registry", func(t *testing.T) {
-		o, err := contain.NewBuildOutput("localhost:1234/test/foo:latest", h1)
+		o, err := contain.NewBuildOutput("localhost:1234/test/foo:latest", p1)
 		if err != nil {
 			t.Error(err)
 		}
@@ -58,7 +63,7 @@ func TestBuildOutput(t *testing.T) {
 	})
 
 	t.Run("image with default registry", func(t *testing.T) {
-		o, err := contain.NewBuildOutput("test/foo:a", h1)
+		o, err := contain.NewBuildOutput("test/foo:a", p1)
 		if err != nil {
 			t.Error(err)
 		}
@@ -87,7 +92,7 @@ func TestBuildOutput(t *testing.T) {
 	})
 
 	t.Run("image with default tag", func(t *testing.T) {
-		o, err := contain.NewBuildOutput("test/foo", h1)
+		o, err := contain.NewBuildOutput("test/foo", p1)
 		if err != nil {
 			t.Error(err)
 		}
@@ -116,7 +121,7 @@ func TestBuildOutput(t *testing.T) {
 	})
 
 	t.Run("buildctl metadata output", func(t *testing.T) {
-		o, err := contain.NewBuildOutput("example.net/yolean/g5y-sidecar:daa3b6df7f58f7644a4ecb129af3d6f70653127c-dirty-205649", h1)
+		o, err := contain.NewBuildOutput("example.net/yolean/g5y-sidecar:daa3b6df7f58f7644a4ecb129af3d6f70653127c-dirty-205649", p1)
 		if err != nil {
 			t.Error(err)
 		}
@@ -155,13 +160,13 @@ func TestBuildOutput(t *testing.T) {
 
 	t.Run("bad input", func(t *testing.T) {
 		var err error
-		if _, err = contain.NewBuildOutput("", h1); err == nil {
+		if _, err = contain.NewBuildOutput("", p1); err == nil {
 			t.Error("Should have err'd on empty")
 		}
-		if _, err = contain.NewBuildOutput(":tag", h1); err == nil {
+		if _, err = contain.NewBuildOutput(":tag", p1); err == nil {
 			t.Error("Should have err'd on tag only")
 		}
-		if _, err = contain.NewBuildOutput("test/foo@123", h1); err == nil {
+		if _, err = contain.NewBuildOutput("test/foo@123", p1); err == nil {
 			t.Error("Should have err'd on invalid digest")
 		}
 	})

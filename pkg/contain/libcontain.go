@@ -178,11 +178,12 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, 
 			)
 		} else {
 			// Fallback if casting fails
-			buildOutput, err = NewBuildOutput(buildOutputTag.String(), result.Digest)
+			zap.L().Error("single platform cast failed, metadata will be incomplete")
+			buildOutput, err = NewBuildOutput(buildOutputTag.String(), result)
 		}
 	} else {
 		// Fallback for multi-platform builds (limited metadata)
-		buildOutput, err = NewBuildOutput(buildOutputTag.String(), result.Digest)
+		buildOutput, err = NewBuildOutput(buildOutputTag.String(), result)
 	}
 	if err != nil {
 		zap.L().Error("buildOutput", zap.Error(err))
