@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	insecurAccessRefs = regexp.MustCompile(`^[^/]+\.local/`)
+	insecureAccessRefs = regexp.MustCompile(`^((localhost|127\.0\.0\.1)(:\d+)?|[^/]+\.local)/`)
 )
 
 type RegistryConfig struct {
@@ -28,8 +28,9 @@ func New(config schema.ContainConfig) (*RegistryConfig, error) {
 		Keychain: authn.DefaultKeychain,
 	}
 
-	if insecurAccessRefs.Match([]byte(config.Base)) {
+	if insecureAccessRefs.Match([]byte(config.Base)) {
 		zap.L().Debug("insecure access enabled", zap.String("base", config.Base))
+		c.CraneOptions.Remote = []remote.Option{remote.WithAuth(authn.Anonymous)}
 		crane.Insecure(&c.CraneOptions)
 	}
 
