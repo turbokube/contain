@@ -29,7 +29,11 @@ skaffold $DEFAULT_REPO -f skaffold.test.yaml build --file-output=dist/test.artif
 skaffold -f skaffold.test.yaml test -a dist/test.artifacts
 
 # test that skaffold render/deploy accepts contain's version of the build-output format
-# TODO
+info1="$(jq -r '.builds[0] | .mediaType + " " + .platforms[0] + " " + .platforms[1]' test/out/contextdir-app.json)"
+[ "$info1" != "application/vnd.oci.image.index.v1+json linux/amd64 linux/arm64/v8" ] && echo "build output: $info1" && exit 1
+# must match the repo in the rawYaml file
+skaffold --default-repo=localhost:22500 -f skaffold.render-test.yaml render -a test/out/contextdir-app.json --digest-source=local \
+  | grep 'image:' | grep '@sha256:'
 
 # test hacks for things that container-structure-test doesn't (?) support
 localtest1=$(cat dist/test.artifacts | jq -r '.builds | .[] | select(.imageName=="localdir1") | .tag')
