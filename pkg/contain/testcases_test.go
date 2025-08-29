@@ -216,6 +216,9 @@ var cases = []testcases.Testcase{
 
 			zap.L().Debug("arm64", zap.Int("layers", len(arm64layers)))
 			// we should assert on fs contents but we need an abstraction for the tar assertions above
+
+			Expect(ref.MediaType).To(Equal("application/vnd.oci.image.index.v1+json"))
+			Expect(ref.Platforms).To(Equal([]string{"linux/amd64", "linux/arm64"}))
 		},
 	},
 	{
@@ -242,6 +245,8 @@ var cases = []testcases.Testcase{
 			Expect(img.MediaType.IsIndex()).NotTo(BeTrue())
 			Expect(img.MediaType.IsImage()).To(BeTrue())
 			Expect(string(img.MediaType)).To(Equal("application/vnd.oci.image.manifest.v1+json"))
+			Expect(ref.MediaType).To(Equal("application/vnd.oci.image.manifest.v1+json"))
+			Expect(ref.Platforms).To(Equal([]string{"linux/amd64"}))
 		},
 	},
 	{
@@ -271,6 +276,8 @@ var cases = []testcases.Testcase{
 			indexManifest, err := index.IndexManifest()
 			Expect(err).To(BeNil())
 			Expect(len(indexManifest.Manifests)).To(Equal(2), "attestation manifests are currently not supported and should thus be dropped")
+			Expect(ref.MediaType).To(Equal("application/vnd.oci.image.index.v1+json"))
+			Expect(ref.Platforms).To(Equal([]string{"linux/amd64", "linux/arm64"}))
 		},
 	},
 	{
@@ -423,7 +430,7 @@ func TestTestcases(t *testing.T) {
 			if buildOutput.Skaffold == nil || len(buildOutput.Skaffold.Builds) == 0 {
 				t.Fatalf("Zero builds in buildOutput: %v", buildOutput)
 			}
-			result := buildOutput.Skaffold.Builds[0]
+			result := buildOutput.Artifact()
 
 			// Log actual result digest for updating ExpectDigest values
 			actual := result.Http().Hash.String()

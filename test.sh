@@ -28,6 +28,9 @@ skaffold $DEFAULT_REPO -f skaffold.test.yaml build --file-output=dist/test.artif
 
 skaffold -f skaffold.test.yaml test -a dist/test.artifacts
 
+# test that skaffold render/deploy accepts contain's version of the build-output format
+# TODO
+
 # test hacks for things that container-structure-test doesn't (?) support
 localtest1=$(cat dist/test.artifacts | jq -r '.builds | .[] | select(.imageName=="localdir1") | .tag')
 localtest1_amd64=$(crane --platform=linux/amd64 digest $localtest1)

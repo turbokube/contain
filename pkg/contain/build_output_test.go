@@ -18,6 +18,10 @@ func TestBuildOutput(t *testing.T) {
 	p1 := multiarch.Pushed{
 		MediaType: "application/vnd.oci.image.manifest.v1+json",
 		Digest:    h1,
+		Platforms: []v1.Platform{
+			{OS: "linux", Architecture: "amd64"},
+			{OS: "linux", Architecture: "arm64", Variant: "v8"},
+		},
 	}
 
 	t.Run("image with registry", func(t *testing.T) {
@@ -44,7 +48,7 @@ func TestBuildOutput(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		if string(jsonBytes) != "{\"builds\":[{\"imageName\":\"localhost:1234/test/foo\",\"tag\":\"localhost:1234/test/foo:latest@sha256:deadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33f\"}]}" {
+		if string(jsonBytes) != "{\"builds\":[{\"imageName\":\"localhost:1234/test/foo\",\"tag\":\"localhost:1234/test/foo:latest@sha256:deadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33f\",\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"platforms\":[\"linux/amd64\",\"linux/arm64/v8\"]}]}" {
 			t.Errorf("json %s", jsonBytes)
 		}
 		http := o.Skaffold.Builds[0].Http()

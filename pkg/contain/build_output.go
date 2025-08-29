@@ -14,19 +14,21 @@ import (
 
 // BuildOutput is used to produce a similar output file that Skaffold does
 type BuildOutput struct {
-	// Skaffold matches skaffold's --file-output format and can be used for skaffold deploy
-	Skaffold *BuildOutputSkaffold `json:"skaffold,omitempty"`
+	// Skaffold is a superset of skaffold's --file-output format and can be used for skaffold deploy
+	Skaffold *BuildOutputSkaffoldSuperset `json:"skaffold,omitempty"`
 	// Buildctl matches buildctl's --metadata-file format
 	Buildctl *MetadataSimilarToBuildctlFile `json:"buildctl,omitempty"`
 	// Trace is internal, doesn't need to match the output of any other tool
 	Trace *BuildTrace `json:"trace,omitempty"`
-	// For multi-arch (index) images, neither skaffold nor buildctl writes platforms
-	// each platform should be a
-	Platforms []string `json:"platforms,omitempty"`
 }
 
-type BuildOutputSkaffold struct {
+type BuildOutputSkaffoldSuperset struct {
 	Builds []Artifact `json:"builds"`
+}
+
+// Artifact returns the one artifact we built (the Skaffold format supports >=0)
+func (b BuildOutput) Artifact() Artifact {
+	return b.Skaffold.Builds[0]
 }
 
 type Artifact struct {
@@ -34,6 +36,11 @@ type Artifact struct {
 	ImageName string `json:"imageName"`
 	// Tag here includes name and digest, i.e. the config Tag to push to (use .Http.Tag for image tag)
 	Tag string `json:"tag"`
+	// MediaType is not part of skaffold's build output format
+	MediaType string `json:"mediaType"`
+	// Platforms is not part of skaffold's build output format
+	// But for multi-arch (index) images, neither skaffold nor buildctl writes platformsso we had to add it somewhere
+	Platforms []string `json:"platforms"`
 	// reference is kept internally for reuse
 	reference name.Reference
 	// http is kept internally to assist http access
@@ -81,7 +88,10 @@ func toPlatforms(platforms []v1.Platform) []string {
 // NewBuildOutput takes tag from config.Tag wich is name:tag and
 // hash from for example append to produce build output for a single image.
 func NewBuildOutput(tag string, pushed multiarch.Pushed) (*BuildOutput, error) {
-	a, err := newArtifact(tag, pushed.Digest)
+	mediaType := string(pushed.MediaType)
+	platforms := toPlatforms(pushed.Platforms)
+
+	a, err := newArtifact(tag, pushed.Digest, mediaType, platforms)
 	if err != nil {
 		return nil, err
 	}
@@ -98,20 +108,15 @@ func NewBuildOutput(tag string, pushed multiarch.Pushed) (*BuildOutput, error) {
 	}
 
 	return &BuildOutput{
-		Skaffold: &BuildOutputSkaffold{
+		Skaffold: &BuildOutputSkaffoldSuperset{
 			Builds: []Artifact{*a},
 		},
-		Buildctl:  metadata,
-		Platforms: toPlatforms(pushed.Platforms),
+		Buildctl: metadata,
 	}, nil
 }
 
 // NewBuildOutputWithMetadata creates BuildOutput with complete metadata from AppendResult
 func NewBuildOutputWithMetadata(tag string, hash v1.Hash, image v1.Image, platform *v1.Platform) (*BuildOutput, error) {
-	a, err := newArtifact(tag, hash)
-	if err != nil {
-		return nil, err
-	}
 
 	// Get the image config digest
 	configHash, err := image.ConfigName()
@@ -123,6 +128,14 @@ func NewBuildOutputWithMetadata(tag string, hash v1.Hash, image v1.Image, platfo
 	manifest, err := image.Manifest()
 	if err != nil {
 		zap.L().Warn("failed to get manifest", zap.Error(err))
+	}
+
+	mediaType := string(manifest.MediaType)
+	platforms := toPlatforms([]v1.Platform{*platform})
+
+	a, err := newArtifact(tag, hash, mediaType, platforms)
+	if err != nil {
+		return nil, err
 	}
 
 	// Create metadata for buildctl format
@@ -144,7 +157,7 @@ func NewBuildOutputWithMetadata(tag string, hash v1.Hash, image v1.Image, platfo
 		}
 
 		metadata.ContainerImageDescriptor = ContainerImageDescriptor{
-			MediaType: string(manifest.MediaType),
+			MediaType: mediaType,
 			Digest:    hash.String(),
 			Size:      int(size),
 		}
@@ -159,16 +172,14 @@ func NewBuildOutputWithMetadata(tag string, hash v1.Hash, image v1.Image, platfo
 	}
 
 	return &BuildOutput{
-		Skaffold: &BuildOutputSkaffold{
+		Skaffold: &BuildOutputSkaffoldSuperset{
 			Builds: []Artifact{*a},
 		},
 		Buildctl: metadata,
-		// not sure why platform is a pointer here
-		Platforms: toPlatforms([]v1.Platform{*platform}),
 	}, nil
 }
 
-func newArtifact(tag string, hash v1.Hash) (*Artifact, error) {
+func newArtifact(tag string, hash v1.Hash, mediaType string, platforms []string) (*Artifact, error) {
 	full := fmt.Sprintf("%s@%v", tag, hash)
 
 	ref, err := reference.Parse(full)
@@ -192,6 +203,8 @@ func newArtifact(tag string, hash v1.Hash) (*Artifact, error) {
 	return &Artifact{
 		Tag:       ref.String(),
 		ImageName: named.Name(),
+		MediaType: mediaType,
+		Platforms: platforms,
 		reference: r,
 		hash:      hash,
 	}, nil
@@ -208,7 +221,7 @@ func (b *BuildOutput) Print() {
 func (b *BuildOutput) WriteSkaffoldJSON(f *os.File) error {
 	if b.Skaffold == nil {
 		// If no Skaffold data, write empty builds array to maintain compatibility
-		b.Skaffold = &BuildOutputSkaffold{Builds: []Artifact{}}
+		b.Skaffold = &BuildOutputSkaffoldSuperset{Builds: []Artifact{}}
 	}
 	j, err := json.Marshal(b.Skaffold)
 	if err != nil {
