@@ -10,6 +10,7 @@ import (
 	"github.com/turbokube/contain/pkg/appender"
 	"github.com/turbokube/contain/pkg/layers"
 	"github.com/turbokube/contain/pkg/multiarch"
+	"github.com/turbokube/contain/pkg/pushed"
 	"github.com/turbokube/contain/pkg/registry"
 	schemav1 "github.com/turbokube/contain/pkg/schema/v1"
 	"go.uber.org/zap"
@@ -70,22 +71,7 @@ func RunLayers(config schemav1.ContainConfig) ([]v1.Layer, error) {
 
 }
 
-func NewPushedSingleImage(pushed *mutate.IndexAddendum) (multiarch.Pushed, error) {
-	mediaType, err := pushed.Add.MediaType()
-	if err != nil {
-		zap.L().Error("single image push image mediaType", zap.Error(err))
-		return multiarch.NewPushedNothing(err)
-	}
-	resultHash, err := pushed.Add.Digest()
-	if err != nil {
-		zap.L().Error("single image push image digest", zap.Error(err))
-		return multiarch.NewPushedNothing(err)
-	}
-	return multiarch.Pushed{
-		MediaType: mediaType,
-		Digest:    resultHash,
-	}, nil
-}
+// Removed NewPushedSingleImage: producers now return *pushed.Artifact directly.
 
 // RunAppend is the remote access part of a run
 func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, error) {
@@ -136,8 +122,7 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, 
 		return r.Pushed, nil
 	}
 
-	var result multiarch.Pushed
-	var singlePlatformResult *mutate.IndexAddendum // Store for metadata extraction
+	var result *pushed.Artifact
 
 	if index.SizeAppend() > 1 {
 		result, err = index.PushWithAppend(each, buildOutputTag, tagRegistry)
@@ -149,42 +134,29 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, 
 		if len(config.Platforms) > index.SizeAppend() {
 			return nil, fmt.Errorf("found %d index manifests to append to, config has %d platforms", index.SizeAppend(), len(config.Platforms))
 		}
-		pushed, err := each(index.BaseRef(), buildOutputTag, tagRegistry)
+		pushedAdd, err := each(index.BaseRef(), buildOutputTag, tagRegistry)
 		if err != nil {
 			zap.L().Error("single image push", zap.Error(err))
 			return nil, err
 		}
-		singlePlatformResult = &pushed
-		result, err = NewPushedSingleImage(&pushed)
+		// Build artifact for single-image case
+		img, _ := pushedAdd.Add.(v1.Image)
+		hash, err := pushedAdd.Add.Digest()
 		if err != nil {
 			return nil, err
 		}
-		zap.L().Info("single platform", zap.String("tag", buildOutputTag.String()), zap.String("hash", result.Digest.String()))
+		result, err = pushed.NewSingleImage(buildOutputTag.String(), hash, img, pushedAdd.Descriptor.Platform)
+		if err != nil {
+			return nil, err
+		}
+		zap.L().Info("single platform", zap.String("tag", buildOutputTag.String()), zap.String("hash", hash.String()))
 	}
 
 	// todo multi-arch index from prototype result to result index
 	// produces new result hash
 
-	var buildOutput *BuildOutput
-	// Use enhanced metadata creation for single platform builds
-	if singlePlatformResult != nil {
-		// Cast Add to v1.Image since that's what it actually is in practice
-		if image, ok := singlePlatformResult.Add.(v1.Image); ok {
-			buildOutput, err = NewBuildOutputWithMetadata(
-				buildOutputTag.String(),
-				result.Digest,
-				image,
-				singlePlatformResult.Descriptor.Platform,
-			)
-		} else {
-			// Fallback if casting fails
-			zap.L().Error("single platform cast failed, metadata will be incomplete")
-			buildOutput, err = NewBuildOutput(buildOutputTag.String(), result)
-		}
-	} else {
-		// Fallback for multi-platform builds (limited metadata)
-		buildOutput, err = NewBuildOutput(buildOutputTag.String(), result)
-	}
+	// Build output from the produced artifact (includes config digest for single images)
+	buildOutput, err := NewBuildOutput(buildOutputTag.String(), result)
 	if err != nil {
 		zap.L().Error("buildOutput", zap.Error(err))
 		return nil, err

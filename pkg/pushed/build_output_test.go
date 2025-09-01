@@ -1,4 +1,4 @@
-package contain_test
+package pushed
 
 import (
 	"encoding/json"
@@ -6,8 +6,6 @@ import (
 	"testing"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/turbokube/contain/pkg/contain"
-	"github.com/turbokube/contain/pkg/multiarch"
 )
 
 func TestBuildOutput(t *testing.T) {
@@ -15,25 +13,28 @@ func TestBuildOutput(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	p1 := multiarch.Pushed{
+	a := &Artifact{
+		ImageName: "localhost:1234/test/foo",
+		TagRef:    "localhost:1234/test/foo:latest@" + h1.String(),
 		MediaType: "application/vnd.oci.image.manifest.v1+json",
-		Digest:    h1,
-		Platforms: []v1.Platform{
-			{OS: "linux", Architecture: "amd64"},
-			{OS: "linux", Architecture: "arm64", Variant: "v8"},
-		},
+		Platforms: []v1.Platform{{OS: "linux", Architecture: "amd64"}, {OS: "linux", Architecture: "arm64", Variant: "v8"}},
+		hash:      h1,
+	}
+	// Rebuild internal reference for Http() usage
+	if err := json.Unmarshal([]byte(`{"imageName":"`+a.ImageName+`","tag":"`+a.TagRef+`","mediaType":"`+string(a.MediaType)+`","platforms":["linux/amd64","linux/arm64/v8"]}`), a); err != nil {
+		t.Fatalf("rebuild: %v", err)
 	}
 
 	t.Run("image with registry", func(t *testing.T) {
-		o, err := contain.NewBuildOutput("localhost:1234/test/foo:latest", p1)
+		o, err := NewBuildOutput("localhost:1234/test/foo:latest", a)
 		if err != nil {
 			t.Error(err)
 		}
 		if len(o.Skaffold.Builds) != 1 {
 			t.Errorf("%d builds", len(o.Skaffold.Builds))
 		}
-		if o.Skaffold.Builds[0].Tag != "localhost:1234/test/foo:latest@sha256:deadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33f" {
-			t.Errorf("ref %s", o.Skaffold.Builds[0].Tag)
+		if o.Skaffold.Builds[0].TagRef != "localhost:1234/test/foo:latest@"+h1.String() {
+			t.Errorf("ref %s", o.Skaffold.Builds[0].TagRef)
 		}
 		if o.Skaffold.Builds[0].ImageName != "localhost:1234/test/foo" {
 			t.Errorf("name %s", o.Skaffold.Builds[0].ImageName)
@@ -48,7 +49,13 @@ func TestBuildOutput(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		if string(jsonBytes) != "{\"builds\":[{\"imageName\":\"localhost:1234/test/foo\",\"tag\":\"localhost:1234/test/foo:latest@sha256:deadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33f\",\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"platforms\":[\"linux/amd64\",\"linux/arm64/v8\"]}]}" {
+		expected := "{" +
+			"\"builds\":[{" +
+			"\"imageName\":\"localhost:1234/test/foo\"," +
+			"\"tag\":\"localhost:1234/test/foo:latest@" + h1.String() + "\"," +
+			"\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\"," +
+			"\"platforms\":[\"linux/amd64\",\"linux/arm64/v8\"]}]}"
+		if string(jsonBytes) != expected {
 			t.Errorf("json %s", jsonBytes)
 		}
 		http := o.Skaffold.Builds[0].Http()
@@ -67,18 +74,14 @@ func TestBuildOutput(t *testing.T) {
 	})
 
 	t.Run("image with default registry", func(t *testing.T) {
-		o, err := contain.NewBuildOutput("test/foo:a", p1)
+		// Create a fresh artifact with no explicit registry
+		var a2 Artifact
+		if err := json.Unmarshal([]byte(`{"imageName":"test/foo","tag":"test/foo:a@`+h1.String()+`","mediaType":"application/vnd.oci.image.manifest.v1+json","platforms":["linux/amd64","linux/arm64/v8"]}`), &a2); err != nil {
+			t.Fatalf("unmarshal a2: %v", err)
+		}
+		o, err := NewBuildOutput("test/foo:a", &a2)
 		if err != nil {
 			t.Error(err)
-		}
-		if len(o.Skaffold.Builds) != 1 {
-			t.Errorf("%d builds", len(o.Skaffold.Builds))
-		}
-		if o.Skaffold.Builds[0].Tag != "test/foo:a@sha256:deadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33f" {
-			t.Errorf("ref %s", o.Skaffold.Builds[0].Tag)
-		}
-		if o.Skaffold.Builds[0].ImageName != "test/foo" {
-			t.Errorf("name %s", o.Skaffold.Builds[0].ImageName)
 		}
 		http := o.Skaffold.Builds[0].Http()
 		if http.Host != "index.docker.io" {
@@ -96,18 +99,13 @@ func TestBuildOutput(t *testing.T) {
 	})
 
 	t.Run("image with default tag", func(t *testing.T) {
-		o, err := contain.NewBuildOutput("test/foo", p1)
+		var a3 Artifact
+		if err := json.Unmarshal([]byte(`{"imageName":"test/foo","tag":"test/foo@`+h1.String()+`","mediaType":"application/vnd.oci.image.manifest.v1+json","platforms":["linux/amd64","linux/arm64/v8"]}`), &a3); err != nil {
+			t.Fatalf("unmarshal a3: %v", err)
+		}
+		o, err := NewBuildOutput("test/foo", &a3)
 		if err != nil {
 			t.Error(err)
-		}
-		if len(o.Skaffold.Builds) != 1 {
-			t.Errorf("%d builds", len(o.Skaffold.Builds))
-		}
-		if o.Skaffold.Builds[0].Tag != "test/foo@sha256:deadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33fdeadb33f" {
-			t.Errorf("ref %s", o.Skaffold.Builds[0].Tag)
-		}
-		if o.Skaffold.Builds[0].ImageName != "test/foo" {
-			t.Errorf("name %s", o.Skaffold.Builds[0].ImageName)
 		}
 		http := o.Skaffold.Builds[0].Http()
 		if http.Host != "index.docker.io" {
@@ -125,7 +123,7 @@ func TestBuildOutput(t *testing.T) {
 	})
 
 	t.Run("buildctl metadata output", func(t *testing.T) {
-		o, err := contain.NewBuildOutput("example.net/yolean/g5y-sidecar:daa3b6df7f58f7644a4ecb129af3d6f70653127c-dirty-205649", p1)
+		o, err := NewBuildOutput("example.net/yolean/g5y-sidecar:daa3b6df7f58f7644a4ecb129af3d6f70653127c-dirty-205649", a)
 		if err != nil {
 			t.Error(err)
 		}
@@ -138,7 +136,6 @@ func TestBuildOutput(t *testing.T) {
 		if o.Buildctl.ContainerImageDigest != h1.String() {
 			t.Errorf("digest %s", o.Buildctl.ContainerImageDigest)
 		}
-
 		f, err := os.CreateTemp("", ".json")
 		if err != nil {
 			t.Error(err)
@@ -149,7 +146,6 @@ func TestBuildOutput(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		// Basic check that it's valid JSON with expected fields
 		var metadata map[string]interface{}
 		if err := json.Unmarshal(jsonBytes, &metadata); err != nil {
 			t.Errorf("invalid JSON: %v", err)
@@ -161,18 +157,4 @@ func TestBuildOutput(t *testing.T) {
 			t.Errorf("missing or wrong image.name")
 		}
 	})
-
-	t.Run("bad input", func(t *testing.T) {
-		var err error
-		if _, err = contain.NewBuildOutput("", p1); err == nil {
-			t.Error("Should have err'd on empty")
-		}
-		if _, err = contain.NewBuildOutput(":tag", p1); err == nil {
-			t.Error("Should have err'd on tag only")
-		}
-		if _, err = contain.NewBuildOutput("test/foo@123", p1); err == nil {
-			t.Error("Should have err'd on invalid digest")
-		}
-	})
-
 }

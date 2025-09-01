@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/distribution/reference"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/turbokube/contain/pkg/multiarch"
+	"github.com/google/go-containerregistry/pkg/v1/types"
+	"github.com/turbokube/contain/pkg/pushed"
 	"go.uber.org/zap"
 )
 
@@ -19,7 +21,7 @@ type BuildOutput struct {
 	// Buildctl matches buildctl's --metadata-file format
 	Buildctl *MetadataSimilarToBuildctlFile `json:"buildctl,omitempty"`
 	// Trace is internal, doesn't need to match the output of any other tool
-	Trace *BuildTrace `json:"trace,omitempty"`
+	Trace *pushed.BuildTrace `json:"trace,omitempty"`
 }
 
 type BuildOutputSkaffoldSuperset struct {
@@ -85,34 +87,62 @@ func toPlatforms(platforms []v1.Platform) []string {
 // TODO now that the Pushed struct has been introduced we should be able to
 // merge NewBuildOutput and NewBuildOutputWithMetadata + adapt things like descriptor.platform to mediaType
 
-// NewBuildOutput takes tag from config.Tag wich is name:tag and
-// hash from for example append to produce build output for a single image.
-func NewBuildOutput(tag string, pushed multiarch.Pushed) (*BuildOutput, error) {
-	mediaType := string(pushed.MediaType)
-	platforms := toPlatforms(pushed.Platforms)
-
-	a, err := newArtifact(tag, pushed.Digest, mediaType, platforms)
+// NewBuildOutput takes tag from config.Tag (name:tag) and a pushed artifact to produce build output.
+func NewBuildOutput(tag string, a *pushed.Artifact) (*BuildOutput, error) {
+	if a == nil {
+		return nil, fmt.Errorf("artifact is nil")
+	}
+	// Parse digest from artifact.TagRef
+	var digestStr string
+	if at := strings.LastIndex(a.TagRef, "@"); at != -1 {
+		digestStr = a.TagRef[at+1:]
+	}
+	if digestStr == "" {
+		return nil, fmt.Errorf("artifact.TagRef missing digest: %s", a.TagRef)
+	}
+	h, err := v1.NewHash(digestStr)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create metadata for buildctl format - we'll need more information later
+	ca, err := newArtifact(tag, h, string(a.MediaType), toPlatforms(a.Platforms))
+	if err != nil {
+		return nil, err
+	}
+
+	// Create metadata for buildctl format
 	metadata := &MetadataSimilarToBuildctlFile{
-		ContainerImageDigest: pushed.Digest.String(),
+		ContainerImageDigest: h.String(),
 		ImageName:            tag,
 		ContainerImageDescriptor: ContainerImageDescriptor{
-			MediaType: string(pushed.MediaType),
-			Digest:    pushed.Digest.String(),
-			// Platform is singular and buildctl doesn't populate it for application/vnd.oci.image.manifest.v1+json
+			MediaType: string(a.MediaType),
+			Digest:    h.String(),
 		},
+	}
+	// Only set platform when not an index and when a platform is present
+	if !isIndexMediaType(a.MediaType) && len(a.Platforms) > 0 {
+		pf := a.Platforms[0]
+		metadata.ContainerImageDescriptor.Platform = Platform{Architecture: pf.Architecture, OS: pf.OS}
+	}
+	// Config digest only for single images when available
+	if cd := a.ConfigDigest(); cd != "" {
+		metadata.ContainerImageConfigDigest = cd
 	}
 
 	return &BuildOutput{
-		Skaffold: &BuildOutputSkaffoldSuperset{
-			Builds: []Artifact{*a},
-		},
+		Skaffold: &BuildOutputSkaffoldSuperset{Builds: []Artifact{*ca}},
 		Buildctl: metadata,
 	}, nil
+}
+
+// isIndexMediaType returns true if the media type denotes an image index/manifest list.
+func isIndexMediaType(mt types.MediaType) bool {
+	switch mt {
+	case types.OCIImageIndex, types.DockerManifestList:
+		return true
+	default:
+		return false
+	}
 }
 
 // NewBuildOutputWithMetadata creates BuildOutput with complete metadata from AppendResult
