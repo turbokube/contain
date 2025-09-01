@@ -57,6 +57,8 @@ func newBuildCmd() *cobra.Command {
 	c.Flags().StringVar(&fileOutput, "file-output", "", "produce a builds JSON like Skaffold does")
 	c.Flags().StringVar(&metadataFile, "metadata-file", "", "produce a metadata JSON like buildctl does")
 	c.Flags().BoolVar(&platformsEnv, "platforms-env-require", false, fmt.Sprintf("requires env %s to be set, unless config specifies platforms", envPlatforms))
+	c.Flags().StringVar(&sbomInFile, "sbom-in", "", "path to SPDX file for the contents of the build")
+	c.Flags().StringVar(&sbomOutFile, "sbom-out", "", "path to SPDX file to write (same as in to overwrite)")
 	return c
 }
 

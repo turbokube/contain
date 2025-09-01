@@ -15,6 +15,12 @@ DEFAULT_REPO=--default-repo=localhost:$REGISTRY_PORT
 $DOCKER inspect $REGISTRY_NAME 2>/dev/null >/dev/null ||
   $DOCKER run --rm -d -p 22500:5000 --name $REGISTRY_NAME registry:2
 
+TEST_RUN_MODE=""
+if [ "$1" = "build-only" ]; then
+  TEST_RUN_MODE="build-only"
+  shift 1
+fi
+
 mkdir -p dist/test
 go build -ldflags="-X main.BUILD=test-$(uname -m)" -o dist/test/contain ./cmd/contain
 export PATH=$(pwd)/dist/test:$PATH
@@ -22,9 +28,8 @@ export PATH=$(pwd)/dist/test:$PATH
 contain --version 2>&1 | grep '^test-'
 contain --help
 
-
-
 skaffold $DEFAULT_REPO -f skaffold.test.yaml build --file-output=dist/test.artifacts --cache-artifacts=false $@
+[ "$TEST_RUN_MODE" = "build-only" ] && echo "[TEST_RUN_MODE=$TEST_RUN_MODE] exiting before test runs" && exit 0
 
 skaffold -f skaffold.test.yaml test -a dist/test.artifacts
 
@@ -55,7 +60,7 @@ localtest1_arm64=$(crane --platform=linux/arm64 digest $localtest1)
 
 # Test buildctl metadata files
 echo "=> Testing buildctl metadata files..."
-for buildctl_file in test/out/localdir.buildctl.json test/out/localdir-app.buildctl.json test/out/contextdir-app.buildctl.json; do
+for buildctl_file in test/out/localdir.buildctl.json test/out/localdir-app.buildctl.json test/out/contextdir-app.buildctl.json test/esbuild-main/target/esbuild-main.buildctl.json; do
   [ -f "$buildctl_file" ] || {
     echo "Error: buildctl metadata file $buildctl_file was not created"
     exit 1
@@ -96,6 +101,8 @@ for F in $(find test -name skaffold.fail-\*.yaml); do
   [ $RESULT -eq 0 ] && echo "Expected build failure with $F, got exit $RESULT after:" && cat $F.out && exit 1
   echo "ok"
 done
+
+./test-spdx.sh
 
 ./test-k8s.sh
 
