@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/turbokube/contain/pkg/appender"
 	"github.com/turbokube/contain/pkg/contain"
+	pushedpkg "github.com/turbokube/contain/pkg/pushed"
 	"github.com/turbokube/contain/pkg/run"
 	"github.com/turbokube/contain/pkg/schema"
 	schemav1 "github.com/turbokube/contain/pkg/schema/v1"
@@ -78,7 +79,7 @@ func runBuild(args []string) error {
 		zap.L().Fatal("watch not implemented")
 	}
 
-	writeBuildOutput(&contain.BuildOutput{Trace: &contain.BuildTrace{Start: &tStart}})
+	writeBuildOutput(&contain.BuildOutput{Trace: &pushedpkg.BuildTrace{Start: &tStart}})
 
 	var workdir string
 	if len(args) == 1 {
@@ -202,7 +203,7 @@ func runBuild(args []string) error {
 		zap.L().Fatal("append", zap.Error(err))
 	}
 	tEnd := time.Now()
-	buildOutput.Trace = &contain.BuildTrace{Start: &tStart, End: &tEnd, Env: contain.BuildTraceEnv(os.Environ())}
+	buildOutput.Trace = &pushedpkg.BuildTrace{Start: &tStart, End: &tEnd, Env: pushedpkg.BuildTraceEnv(os.Environ())}
 	buildOutput.Print()
 
 	if chdir != nil {

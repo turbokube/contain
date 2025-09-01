@@ -23,9 +23,9 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.PersistentFlags().BoolVarP(&debug, "x", "x", false, "logs at debug level")
+	rootCmd.PersistentFlags().BoolVarP(&debug, "x", "x", false, "logs at debug level (overrides env CONTAIN_LOG_LEVEL)")
 	rootCmd.PersistentFlags().BoolVar(&version, "version", false, "print build version and exit")
-	rootCmd.PersistentFlags().StringVar(&loggerMode, "logger", "dev", "logger mode: dev|plain")
+	rootCmd.PersistentFlags().StringVar(&loggerMode, "logger", "dev", "logger mode: dev|plain (env CONTAIN_LOG_MODE; flag overrides env)")
 
 	rootCmd.AddCommand(newBuildCmd())
 	rootCmd.AddCommand(newSbomCmd())
