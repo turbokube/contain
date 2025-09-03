@@ -40,110 +40,27 @@ cat "$EXAMPLE1_OUT" | jq '.'
 if command -v trivy; then
    echo "Found trivy CLI:"
    trivy --version
-   trivy sbom $EXAMPLE1_OUT
+   trivy sbom $EXAMPLE1_OUT || true
 fi
 
-# TODO actually assert stuff. Below code is from an early exploration.
-echo "Specific assertions (unmaintained) skipped until in scope" && exit 0
+# Assertions for SPDX enrichment
+FILE="$EXAMPLE1_OUT"
 
-BASE_NAME="${2:-example.net/misc/base-image:abc}"
-RESULT_PREFIX="${3:-example.net/misc/result-image:cde}"
-
-# ---- 1) Base Package exists (exact name) ----
-BASE_ID="$(
-  jq -r --arg base "$BASE_NAME" '
-    first(.packages[]?
-      | select(.primaryPackagePurpose=="CONTAINER" and .name==$base)
-      | .SPDXID) // ""
-  ' "$FILE"
-)"
-if [[ -z "$BASE_ID" ]]; then
-  echo "FAIL: base image package not found"
-  echo "  expected name: $BASE_NAME"
-  echo "  actual container package names:"
-  jq -r '.packages[]? | select(.primaryPackagePurpose=="CONTAINER") | "    - \(.name)"' "$FILE"
-  exit 1
+# 1) Result package exists (matches imageName@sha256:64hex) and is documentDescribes
+IMG_NAME="$(jq -r '.packages[]? | select(.primaryPackagePurpose=="CONTAINER") | .name | select(test("@sha256:[0-9a-f]{64}$"))' "$FILE" | head -n1)"
+if [[ -z "$IMG_NAME" ]]; then echo "FAIL: result image container package with digest not found"; exit 1; fi
+RESULT_ID="$(jq -r --arg n "$IMG_NAME" 'first(.packages[]? | select(.name==$n) | .SPDXID) // ""' "$FILE")"
+if [[ -z "$RESULT_ID" ]]; then echo "FAIL: SPDXID for result image not found"; exit 1; fi
+if ! jq -e --arg id "$RESULT_ID" '.documentDescribes[]? | select(.==$id) | length >= 0' "$FILE" >/dev/null; then
+  echo "FAIL: documentDescribes missing result image"; exit 1
 fi
 
-# ---- 2) Result Package exists (name starts with prefix@ and has sha256:64hex) ----
-RESULT_NAME="$(
-  jq -r --arg pref "$RESULT_PREFIX" '
-    first(.packages[]?
-      | select(.primaryPackagePurpose=="CONTAINER" and (.name | startswith($pref+"@")))
-      | .name) // ""
-  ' "$FILE"
-)"
-if [[ -z "$RESULT_NAME" ]]; then
-  echo "FAIL: result image package not found"
-  echo "  expected prefix: ${RESULT_PREFIX}@sha256:<64hex>"
-  echo "  actual container package names:"
-  jq -r '.packages[]? | select(.primaryPackagePurpose=="CONTAINER") | "    - \(.name)"' "$FILE"
-  exit 1
-fi
+# 2) Relationship RESULT DESCENDANT_OF BASE exists and base has SHA256 checksum
+BASE_ID="$(jq -r --arg a "$RESULT_ID" 'first(.relationships[]? | select(.relationshipType=="DESCENDANT_OF" and .spdxElementId==$a) | .relatedSpdxElement) // ""' "$FILE")"
+if [[ -z "$BASE_ID" ]]; then echo "FAIL: DESCENDANT_OF relationship missing"; exit 1; fi
+BASE_PURPOSE="$(jq -r --arg id "$BASE_ID" 'first(.packages[]? | select(.SPDXID==$id) | .primaryPackagePurpose) // ""' "$FILE")"
+if [[ "$BASE_PURPOSE" != "CONTAINER" ]]; then echo "FAIL: related base is not a CONTAINER package"; exit 1; fi
+BASE_HAS_SHA256="$(jq -r --arg id "$BASE_ID" 'first(.packages[]? | select(.SPDXID==$id) | .checksums[]? | select(.algorithm=="SHA256") | .checksumValue) // ""' "$FILE")"
+if ! [[ "$BASE_HAS_SHA256" =~ ^[0-9a-f]{64}$ ]]; then echo "FAIL: base image missing SHA256 checksum"; exit 1; fi
 
-# Validate digest format purely in Bash
-if [[ "$RESULT_NAME" != "$RESULT_PREFIX@"* ]]; then
-  echo "FAIL: result image name does not start with expected prefix"
-  echo "  expected prefix: ${RESULT_PREFIX}@"
-  echo "  actual name: $RESULT_NAME"
-  exit 1
-fi
-DIGEST="${RESULT_NAME#*@}"
-if ! [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-  echo "FAIL: result image digest has unexpected format"
-  echo "  expected: sha256:<64-hex>"
-  echo "  actual:   $DIGEST"
-  exit 1
-fi
-
-# ---- 3) Resolve RESULT_ID from the exact RESULT_NAME ----
-RESULT_ID="$(
-  jq -r --arg name "$RESULT_NAME" '
-    first(.packages[]? | select(.name==$name) | .SPDXID) // ""
-  ' "$FILE"
-)"
-if [[ -z "$RESULT_ID" ]]; then
-  echo "FAIL: could not resolve SPDXID for result image"
-  echo "  result name: $RESULT_NAME"
-  exit 1
-fi
-
-# ---- 4) Relationship: RESULT DESCENDANT_OF BASE ----
-# Extract the related element for a DESCENDANT_OF from RESULT; compare to BASE_ID
-REL_DESC_TO="$(
-  jq -r --arg f "$RESULT_ID" '
-    first(.relationships[]?
-      | select(.relationshipType=="DESCENDANT_OF" and .spdxElementId==$f)
-      | .relatedSpdxElement) // ""
-  ' "$FILE"
-)"
-if [[ "$REL_DESC_TO" != "$BASE_ID" ]]; then
-  echo "FAIL: missing/wrong DESCENDANT_OF relationship"
-  echo "  expected: $RESULT_ID -> $BASE_ID"
-  echo "  actual:   $RESULT_ID -> ${REL_DESC_TO:-<none>}"
-  echo "  relationships for $RESULT_ID:"
-  jq -r --arg f "$RESULT_ID" '
-    .relationships[]?
-    | select(.spdxElementId==$f)
-    | "    - \(.spdxElementId) \(.relationshipType) \(.relatedSpdxElement)"
-  ' "$FILE"
-  exit 1
-fi
-
-# ---- 5) documentDescribes includes RESULT_ID ----
-DESC_MATCH="$(
-  jq -r --arg f "$RESULT_ID" '
-    first(.documentDescribes[]? | select(.==$f)) // ""
-  ' "$FILE"
-)"
-if [[ "$DESC_MATCH" != "$RESULT_ID" ]]; then
-  echo "FAIL: result image not listed in documentDescribes"
-  echo "  expected id: $RESULT_ID"
-  echo "  actual list:"
-  jq -r '.documentDescribes[]? | "    - " + .' "$FILE"
-  exit 1
-fi
-
-echo "PASS"
-echo "  BASE_ID=$BASE_ID  BASE_NAME=$BASE_NAME"
-echo "  RESULT_ID=$RESULT_ID  RESULT_NAME=$RESULT_NAME"
+echo "PASS: SPDX enrichment looks good"

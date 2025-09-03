@@ -45,6 +45,31 @@ The resulting SPDX fully describes your deliverabe,
 if your image builds only deal with appending artifacts to base images.
 That's the principle of [contain]().
 
+## SBOM output and provenance
+
+contain focuses on builds that append local artifacts to existing multi-architecture base images. This shapes our SPDX output and relationships so that downstream tooling understands the provenance correctly while remaining compatible with a variety of input SBOMs (npm, Maven, etc.).
+
+What we emit when you run `contain sbom`:
+
+- Preserve the input SBOM verbatim (application packages, dependencies, relationships) and add a creator entry: `Tool: contain-<version>`.
+- Add two container packages under `packages` with `primaryPackagePurpose: CONTAINER`:
+  - Base image package: name equals the base ref without digest (e.g. `example.net/misc/base-image:abc`). If the base digest is known, we add a SHA256 checksum to the package. We discover this primarily from the built image’s OCI annotations `org.opencontainers.image.base.name` and `org.opencontainers.image.base.digest` and allow env overrides (`CONTAIN_SPDX_BASE_NAME`, `CONTAIN_SPDX_BASE_DIGEST`) to avoid registry access in CI/tests.
+  - Result image package: name equals `imageName@sha256:<digest>` using the pushed digest from the build metadata. This is the immutable deliverable that identifies the published container image.
+- Set `documentDescribes` to include the result image package’s SPDXID so that the top-level described artifact is your deliverable image, not only the application package from the tool SBOM.
+- Add a provenance relationship: `RESULT DESCENDANT_OF BASE`. This expresses that the result container is derived from the base image, aligning with SPDX 2.3 relationship semantics for lineage.
+
+Why these choices matter for append-style builds:
+
+- Multi-arch parity: The same application file tree is appended to each platform manifest; there is a single top-level deliverable (the manifest list digest). Using the index digest as the result package name communicates this cross-platform deliverable clearly.
+- Minimal coupling: We do not rewrite or duplicate application dependencies from the input SBOM. contain only adds the container provenance (base/result) that traditional language-package SBOMs lack.
+- Compatibility: We operate on generic SPDX JSON fields (`packages`, `relationships`, `documentDescribes`) and avoid tool-specific extensions so inputs from npm/Maven/other producers continue to validate. If a container package already exists, we update it in-place (e.g., add a SHA256 checksum) without reordering non-container packages. New container packages are appended.
+
+Notes and fallbacks:
+
+- Base autodiscovery is best-effort. If the registry is unreachable, set `CONTAIN_SPDX_BASE_NAME` and `CONTAIN_SPDX_BASE_DIGEST` to ensure deterministic enrichment.
+- We only add platform-agnostic provenance. contain builds are intentionally platform-agnostic at the layer level; provenance is expressed once at the result (manifest list) level.
+- Output stays pretty-printed JSON with two-space indentation for readability and easy diffing in CI.
+
 ## libs
 
 https://pkg.go.dev/github.com/spdx/tools-golang
