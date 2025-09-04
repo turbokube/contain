@@ -268,5 +268,5 @@ func (m *IndexManifests) PushWithAppend(append EachAppend, tagRef name.Reference
 	if err != nil {
 		return nil, err
 	}
-	return pushed.NewIndexImage(tagRef.String(), d, resultIndex)
+	return pushed.NewIndexImage(tagRef.String(), d, resultIndex, m.baseRef.String())
 }

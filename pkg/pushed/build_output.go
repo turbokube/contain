@@ -14,6 +14,18 @@ type BuildOutput struct {
 	Skaffold *BuildOutputSkaffoldSuperset `json:"skaffold,omitempty"`
 	// Buildctl matches buildctl's --metadata-file format
 	Buildctl *MetadataSimilarToBuildctlFile `json:"buildctl,omitempty"`
+	// Trace is internal metadata such as start/end and env; optional
+	Trace *BuildTrace `json:"trace,omitempty"`
+}
+
+// Print writes the tag@digest for each built artifact, similar to previous contain package behavior.
+func (b *BuildOutput) Print() {
+	if b == nil || b.Skaffold == nil {
+		return
+	}
+	for _, a := range b.Skaffold.Builds {
+		fmt.Println(a.TagRef)
+	}
 }
 
 type BuildOutputSkaffoldSuperset struct {

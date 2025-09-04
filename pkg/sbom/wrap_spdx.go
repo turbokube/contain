@@ -71,16 +71,40 @@ func WrapSPDX(buildArtifactsPath string, inFile string, outFile string, artifact
 
 	// If we found a result image, add container package for it and make it top-level deliverable
 	var resultID string
+	// capture pre-existing documentDescribes (incoming app)
+	var prevDocDesc []string
+	if v, ok := doc["documentDescribes"].([]interface{}); ok {
+		for _, x := range v {
+			if s, ok := x.(string); ok {
+				prevDocDesc = append(prevDocDesc, s)
+			}
+		}
+	}
 	if resImageName != "" && resDigest.Algorithm == "sha256" && resDigest.Hex != "" {
 		resultPkgName := fmt.Sprintf("%s@%s:%s", resImageName, resDigest.Algorithm, resDigest.Hex)
 		resultID = ensureContainerPackageJSON(&doc, resultPkgName, "")
 		ensureDocumentDescribesJSON(&doc, resultID)
+		// Link result to previous top-level described app(s)
+		for _, id := range prevDocDesc {
+			if id != "" && id != resultID {
+				ensureRelationshipJSON(&doc, resultID, id, "DEPENDS_ON")
+				ensureRelationshipJSON(&doc, id, resultID, "DEPENDENCY_OF")
+			}
+		}
 	}
 
-	// Attempt to discover base image from annotations of the built image (best-effort)
+	// Attempt to discover base image: prefer propagated info on the artifact; fallback to remote annotations
 	var baseName string
 	var baseDigestHex string
-	if tagRef != "" {
+	if artifact != nil && artifact.BaseRef != "" {
+		// Parse name and digest from base ref
+		if at := strings.LastIndex(artifact.BaseRef, "@"); at != -1 {
+			baseName = strings.TrimPrefix(artifact.BaseRef[:at], "/")
+			baseDigestHex = trimSha256Prefix(artifact.BaseRef[at+1:])
+		} else {
+			baseName = strings.TrimPrefix(artifact.BaseRef, "/")
+		}
+	} else if tagRef != "" {
 		baseName, baseDigestHex = discoverBaseFromImage(tagRef)
 	}
 	// Optional env override for tests or CI
@@ -95,9 +119,11 @@ func WrapSPDX(buildArtifactsPath string, inFile string, outFile string, artifact
 	if baseName != "" {
 		baseID = ensureContainerPackageJSON(&doc, baseName, baseDigestHex)
 	}
-	// Relationship: result DESCENDANT_OF base (if both present)
+	// Relationships: result DESCENDANT_OF base and result DEPENDS_ON base (same level as incoming app)
 	if resultID != "" && baseID != "" {
 		ensureRelationshipJSON(&doc, resultID, baseID, "DESCENDANT_OF")
+		ensureRelationshipJSON(&doc, resultID, baseID, "DEPENDS_ON")
+		ensureRelationshipJSON(&doc, baseID, resultID, "DEPENDENCY_OF")
 	}
 
 	// Write back

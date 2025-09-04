@@ -17,6 +17,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/turbokube/contain/pkg/appender"
 	"github.com/turbokube/contain/pkg/contain"
+	"github.com/turbokube/contain/pkg/pushed"
 	schema "github.com/turbokube/contain/pkg/schema/v1"
 	"github.com/turbokube/contain/pkg/testcases"
 	"go.uber.org/zap"
@@ -47,7 +48,7 @@ var cases = []testcases.Testcase{
 			}
 		},
 		ExpectDigest: "sha256:449a8c029dae5a658300ca37f5f3ebaece877778f213a73803829fbcc520e91f",
-		Expect: func(ref contain.Artifact, t *testing.T) {
+		Expect: func(ref pushed.Artifact, t *testing.T) {
 
 			// double check base image digest
 			d, err := crane.Digest(fmt.Sprintf("%s/contain-test/baseimage-multiarch1:noattest@sha256:f9f2106a04a339d282f1152f0be7c9ce921a0c01320de838cda364948de66bd4", testRegistry))
@@ -217,8 +218,13 @@ var cases = []testcases.Testcase{
 			zap.L().Debug("arm64", zap.Int("layers", len(arm64layers)))
 			// we should assert on fs contents but we need an abstraction for the tar assertions above
 
-			Expect(ref.MediaType).To(Equal("application/vnd.oci.image.index.v1+json"))
-			Expect(ref.Platforms).To(Equal([]string{"linux/amd64", "linux/arm64"}))
+			Expect(string(ref.MediaType)).To(Equal("application/vnd.oci.image.index.v1+json"))
+			// Convert platforms to string slice if needed
+			var pf []string
+			for _, p := range ref.Platforms {
+				pf = append(pf, p.String())
+			}
+			Expect(pf).To(Equal([]string{"linux/amd64", "linux/arm64"}))
 		},
 	},
 	{
@@ -239,14 +245,18 @@ var cases = []testcases.Testcase{
 			}
 		},
 		ExpectDigest: "sha256:58abaf10c628fad1c9f9e4802c9a11bed0ad0452361e3c77d115aff0dae7038c",
-		Expect: func(ref contain.Artifact, t *testing.T) {
+		Expect: func(ref pushed.Artifact, t *testing.T) {
 			img, err := remote.Get(ref.Reference(), testCraneOptions.Remote...)
 			Expect(err).To(BeNil())
 			Expect(img.MediaType.IsIndex()).NotTo(BeTrue())
 			Expect(img.MediaType.IsImage()).To(BeTrue())
 			Expect(string(img.MediaType)).To(Equal("application/vnd.oci.image.manifest.v1+json"))
-			Expect(ref.MediaType).To(Equal("application/vnd.oci.image.manifest.v1+json"))
-			Expect(ref.Platforms).To(Equal([]string{"linux/amd64"}))
+			Expect(string(ref.MediaType)).To(Equal("application/vnd.oci.image.manifest.v1+json"))
+			var pf []string
+			for _, p := range ref.Platforms {
+				pf = append(pf, p.String())
+			}
+			Expect(pf).To(Equal([]string{"linux/amd64"}))
 		},
 	},
 	{
@@ -267,7 +277,7 @@ var cases = []testcases.Testcase{
 			}
 		},
 		ExpectDigest: "sha256:7399a2da270aae9c9dcf7fc008c3c161f4425faf78c187b4c7fbab0e02ee7dde",
-		Expect: func(ref contain.Artifact, t *testing.T) {
+		Expect: func(ref pushed.Artifact, t *testing.T) {
 			img, err := remote.Get(ref.Reference(), testCraneOptions.Remote...)
 			Expect(err).To(BeNil())
 			Expect(img.MediaType.IsIndex()).To(BeTrue())
@@ -276,8 +286,12 @@ var cases = []testcases.Testcase{
 			indexManifest, err := index.IndexManifest()
 			Expect(err).To(BeNil())
 			Expect(len(indexManifest.Manifests)).To(Equal(2), "attestation manifests are currently not supported and should thus be dropped")
-			Expect(ref.MediaType).To(Equal("application/vnd.oci.image.index.v1+json"))
-			Expect(ref.Platforms).To(Equal([]string{"linux/amd64", "linux/arm64"}))
+			Expect(string(ref.MediaType)).To(Equal("application/vnd.oci.image.index.v1+json"))
+			var pf []string
+			for _, p := range ref.Platforms {
+				pf = append(pf, p.String())
+			}
+			Expect(pf).To(Equal([]string{"linux/amd64", "linux/arm64"}))
 		},
 	},
 	{
@@ -303,7 +317,7 @@ var cases = []testcases.Testcase{
 			}
 		},
 		ExpectDigest: "sha256:724714f1082b6836d5b1db3923b3e2675c3dddf5e355c5f04b5da6ab1fdff397",
-		Expect: func(ref contain.Artifact, t *testing.T) {
+		Expect: func(ref pushed.Artifact, t *testing.T) {
 			img, err := remote.Image(ref.Reference(), testCraneOptions.Remote...)
 			Expect(err).To(BeNil())
 			var fs = make(map[string]*tar.Header)
@@ -350,7 +364,7 @@ var cases = []testcases.Testcase{
 			}
 		},
 		ExpectDigest: "sha256:229888fcbf659f453173f495ee645b19f0659f90359959e85886b45fdb5396e3",
-		Expect: func(ref contain.Artifact, t *testing.T) {
+		Expect: func(ref pushed.Artifact, t *testing.T) {
 			img, err := remote.Image(ref.Reference(), testCraneOptions.Remote...)
 			Expect(err).To(BeNil())
 			var fs = make(map[string]*tar.Header)

@@ -20,7 +20,7 @@ import (
 // - Depends on a zap.ReplaceGlobals logger
 // - No side effects other than push to config.Tag (and child tags in case of an index)
 // - Not affected by environment, i.e. config defines a repeatable build
-func Run(config schemav1.ContainConfig) (*Artifact, error) {
+func Run(config schemav1.ContainConfig) (*pushed.Artifact, error) {
 
 	// index, err := multiarch.NewRequireMultiArchBase(config)
 	// if err != nil {
@@ -74,7 +74,7 @@ func RunLayers(config schemav1.ContainConfig) ([]v1.Layer, error) {
 // Removed NewPushedSingleImage: producers now return *pushed.Artifact directly.
 
 // RunAppend is the remote access part of a run
-func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, error) {
+func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*pushed.BuildOutput, error) {
 	// source repo can differ from destination repo, we should probably struct tag + remote config
 	var baseRegistry *registry.RegistryConfig
 	var tagRegistry *registry.RegistryConfig
@@ -145,18 +145,21 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*BuildOutput, 
 		if err != nil {
 			return nil, err
 		}
-		result, err = pushed.NewSingleImage(buildOutputTag.String(), hash, img, pushedAdd.Descriptor.Platform)
+		result, err = pushed.NewSingleImage(buildOutputTag.String(), hash, img, pushedAdd.Descriptor.Platform, config.Base)
 		if err != nil {
 			return nil, err
 		}
 		zap.L().Info("single platform", zap.String("tag", buildOutputTag.String()), zap.String("hash", hash.String()))
 	}
 
+	// Propagate base information from config to the pushed artifact
+	// BaseRef already set by constructors
+
 	// todo multi-arch index from prototype result to result index
 	// produces new result hash
 
 	// Build output from the produced artifact (includes config digest for single images)
-	buildOutput, err := NewBuildOutput(buildOutputTag.String(), result)
+	buildOutput, err := pushed.NewBuildOutput(buildOutputTag.String(), result)
 	if err != nil {
 		zap.L().Error("buildOutput", zap.Error(err))
 		return nil, err

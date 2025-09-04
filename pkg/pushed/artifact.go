@@ -23,6 +23,8 @@ type Artifact struct {
 	// Platforms is not part of skaffold's build output format
 	// But for multi-arch (index) images, neither skaffold nor buildctl writes platformsso we had to add it somewhere
 	Platforms []v1.Platform `json:"platforms"`
+	// BaseRef is the configured base image reference as provided (may include @sha256:digest)
+	BaseRef string `json:"base,omitempty"`
 	// reference is kept internally for reuse
 	reference name.Reference
 	// http is kept internally to assist http access
@@ -91,7 +93,10 @@ func newRef(tagRef string, hash v1.Hash) (*Artifact, error) {
 
 // NewArtifactSingleImage should be called for pushed image that has no index manifest
 // with platform given by the build process
-func NewSingleImage(tagRef string, digest v1.Hash, image v1.Image, platform *v1.Platform) (*Artifact, error) {
+func NewSingleImage(tagRef string, digest v1.Hash, image v1.Image, platform *v1.Platform, baseRef string) (*Artifact, error) {
+	if baseRef == "" {
+		return nil, fmt.Errorf("baseRef is required")
+	}
 	a, err := newRef(tagRef, digest)
 	if err != nil {
 		return nil, err
@@ -112,13 +117,17 @@ func NewSingleImage(tagRef string, digest v1.Hash, image v1.Image, platform *v1.
 
 	a.MediaType = manifest.MediaType
 	a.Platforms = []v1.Platform{*platform}
+	a.BaseRef = baseRef
 
 	return a, nil
 }
 
 // NewArtifact should be called for pushed image that is an index
 // even if the index contains only a single platform
-func NewIndexImage(tagRef string, digest v1.Hash, image v1.ImageIndex) (*Artifact, error) {
+func NewIndexImage(tagRef string, digest v1.Hash, image v1.ImageIndex, baseRef string) (*Artifact, error) {
+	if baseRef == "" {
+		return nil, fmt.Errorf("baseRef is required")
+	}
 	a, err := newRef(tagRef, digest)
 	if err != nil {
 		return nil, err
@@ -132,6 +141,7 @@ func NewIndexImage(tagRef string, digest v1.Hash, image v1.ImageIndex) (*Artifac
 
 	a.MediaType = manifest.MediaType
 	a.Platforms = platformsFromIndexManifest(manifest)
+	a.BaseRef = baseRef
 
 	return a, nil
 }
@@ -184,6 +194,7 @@ func (a *Artifact) UnmarshalJSON(data []byte) error {
 
 // MarshalJSON encodes Platforms as strings (os/arch[/variant]) for readability/stability.
 func (a Artifact) MarshalJSON() ([]byte, error) {
+	// Use alias to reuse JSON tags for all fields, overriding only Platforms type
 	type artifactAlias Artifact
 	type artifactJSON struct {
 		artifactAlias
@@ -193,8 +204,9 @@ func (a Artifact) MarshalJSON() ([]byte, error) {
 	for _, p := range a.Platforms {
 		pf = append(pf, p.String())
 	}
-	return json.Marshal(artifactJSON{
+	out := artifactJSON{
 		artifactAlias: artifactAlias(a),
 		Platforms:     pf,
-	})
+	}
+	return json.Marshal(out)
 }

@@ -109,7 +109,7 @@ func TestWrapSPDX_AppendsCreatorAndEnrichment(t *testing.T) {
 		t.Fatalf("documentDescribes missing result")
 	}
 
-	// Relationship: RESULT DESCENDANT_OF BASE
+	// Relationship: RESULT DESCENDANT_OF BASE and RESULT DEPENDS_ON BASE
 	var baseID string
 	for _, v := range pkgs {
 		m := v.(map[string]interface{})
@@ -118,14 +118,36 @@ func TestWrapSPDX_AppendsCreatorAndEnrichment(t *testing.T) {
 		}
 	}
 	rels := doc["relationships"].([]interface{})
-	var hasRel bool
+	var hasDescendant bool
+	var hasDepends bool
+	var appDependsStill bool
+	var appID string
+	// find incoming app package SPDXID
+	for _, v := range pkgs {
+		m := v.(map[string]interface{})
+		if m["primaryPackagePurpose"] == "APPLICATION" {
+			appID = m["SPDXID"].(string)
+		}
+	}
 	for _, v := range rels {
 		m := v.(map[string]interface{})
 		if m["relationshipType"] == "DESCENDANT_OF" && m["spdxElementId"] == resultID && m["relatedSpdxElement"] == baseID {
-			hasRel = true
+			hasDescendant = true
+		}
+		if m["relationshipType"] == "DEPENDS_ON" && m["spdxElementId"] == resultID && m["relatedSpdxElement"] == baseID {
+			hasDepends = true
+		}
+		if m["relationshipType"] == "DEPENDENCY_OF" && m["spdxElementId"] == appID && m["relatedSpdxElement"] == resultID {
+			appDependsStill = true
 		}
 	}
-	if !hasRel {
+	if !hasDescendant {
 		t.Fatalf("DESCENDANT_OF relationship missing")
+	}
+	if !hasDepends {
+		t.Fatalf("DEPENDS_ON relationship missing")
+	}
+	if appID != "" && !appDependsStill {
+		t.Fatalf("incoming app dependency on result missing")
 	}
 }

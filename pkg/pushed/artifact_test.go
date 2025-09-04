@@ -24,7 +24,7 @@ func TestNewSingleImage_AndJSONRoundTrip(t *testing.T) {
 	platform := &v1.Platform{OS: "linux", Architecture: "amd64"}
 	tag := "localhost:22500/localdir-arm64:v0.5.5-37-g0a9a4c9"
 
-	a, err := NewSingleImage(tag, digest, img, platform)
+	a, err := NewSingleImage(tag, digest, img, platform, "busybox:latest@sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")
 	Expect(err).NotTo(HaveOccurred())
 
 	// Assert basics
@@ -68,6 +68,8 @@ func TestNewSingleImage_AndJSONRoundTrip(t *testing.T) {
 	Expect(b.hash.String()).To(Equal(digest.String()))
 	// Config hash cannot be reconstructed from JSON; expect zero value
 	Expect(b.singleImageConfigHash).To(Equal(v1.Hash{}))
+	// BaseRef must be preserved
+	Expect(b.BaseRef).To(Equal("busybox:latest@sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"))
 }
 
 func TestNewIndexImage_AndJSONRoundTrip(t *testing.T) {
@@ -101,7 +103,7 @@ func TestNewIndexImage_AndJSONRoundTrip(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 
 	tag := "localhost:22500/localdir-app:v0.5.5-37-g0a9a4c9"
-	a, err := NewIndexImage(tag, digest, idx)
+	a, err := NewIndexImage(tag, digest, idx, "alpine:3.19@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 	Expect(err).NotTo(HaveOccurred())
 
 	// Assert basics
@@ -138,4 +140,6 @@ func TestNewIndexImage_AndJSONRoundTrip(t *testing.T) {
 	Expect(b.hash.String()).To(Equal(digest.String()))
 	// singleImageConfigHash must remain empty for index
 	Expect(b.singleImageConfigHash).To(Equal(v1.Hash{}))
+	// BaseRef must be preserved
+	Expect(b.BaseRef).To(Equal("alpine:3.19@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"))
 }

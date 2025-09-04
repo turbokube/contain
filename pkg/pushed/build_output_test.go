@@ -20,8 +20,9 @@ func TestBuildOutput(t *testing.T) {
 		Platforms: []v1.Platform{{OS: "linux", Architecture: "amd64"}, {OS: "linux", Architecture: "arm64", Variant: "v8"}},
 		hash:      h1,
 	}
-	// Rebuild internal reference for Http() usage
-	if err := json.Unmarshal([]byte(`{"imageName":"`+a.ImageName+`","tag":"`+a.TagRef+`","mediaType":"`+string(a.MediaType)+`","platforms":["linux/amd64","linux/arm64/v8"]}`), a); err != nil {
+	// Rebuild internal reference for Http() usage and set base
+	base := "gcr.io/distroless/base-debian12:debug-nonroot@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	if err := json.Unmarshal([]byte(`{"imageName":"`+a.ImageName+`","tag":"`+a.TagRef+`","mediaType":"`+string(a.MediaType)+`","base":"`+base+`","platforms":["linux/amd64","linux/arm64/v8"]}`), a); err != nil {
 		t.Fatalf("rebuild: %v", err)
 	}
 
@@ -54,6 +55,7 @@ func TestBuildOutput(t *testing.T) {
 			"\"imageName\":\"localhost:1234/test/foo\"," +
 			"\"tag\":\"localhost:1234/test/foo:latest@" + h1.String() + "\"," +
 			"\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\"," +
+			"\"base\":\"" + base + "\"," +
 			"\"platforms\":[\"linux/amd64\",\"linux/arm64/v8\"]}]}"
 		if string(jsonBytes) != expected {
 			t.Errorf("json %s", jsonBytes)

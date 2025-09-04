@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/turbokube/contain/pkg/contain"
+	"github.com/turbokube/contain/pkg/pushed"
 	schema "github.com/turbokube/contain/pkg/schema/v1"
 )
 
@@ -29,7 +29,7 @@ type Testcase struct {
 	// which if it matches the pushed digest passes the test without further expect calls
 	ExpectDigest string
 	// Expect will run on ExpectDigest mismatch
-	Expect func(ref contain.Artifact, t *testing.T)
+	Expect func(ref pushed.Artifact, t *testing.T)
 }
 
 // NewTempDir creates a temporary directory and a teardown function

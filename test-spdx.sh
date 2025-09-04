@@ -40,14 +40,29 @@ cat "$EXAMPLE1_OUT" | jq '.'
 if command -v trivy; then
    echo "Found trivy CLI:"
    trivy --version
-   trivy sbom $EXAMPLE1_OUT || true
+   # Trivy SBOM scan should reflect that this SBOM represents an application deliverable that's a container image.
+   # While Trivy prints 'Node.js' as Target for language analysis, we assert the presence of our container result name in the SBOM.
+   TRIVY_JSON=$(TRIVY_NO_PROGRESS=1 trivy sbom --format json "$EXAMPLE1_OUT" || true)
+   echo "$TRIVY_JSON" | jq '{ArtifactName, ArtifactType, ResultTargets: (.Results|map(.Target))}'
+   # Basic assertion: the input is recognized as an SPDX SBOM by Trivy
+   TRIVY_TYPE=$(echo "$TRIVY_JSON" | jq -r '.ArtifactType // ""')
+   if [[ "$TRIVY_TYPE" != "spdx" ]]; then
+     echo "FAIL: Trivy did not recognize SPDX SBOM (ArtifactType=$TRIVY_TYPE)"
+     exit 1
+   fi
 fi
 
 # Assertions for SPDX enrichment
 FILE="$EXAMPLE1_OUT"
 
-# 1) Result package exists (matches imageName@sha256:64hex) and is documentDescribes
-IMG_NAME="$(jq -r '.packages[]? | select(.primaryPackagePurpose=="CONTAINER") | .name | select(test("@sha256:[0-9a-f]{64}$"))' "$FILE" | head -n1)"
+# Expected pushed image name@digest from build artifacts
+RESULT_TAG=$(jq -r '.builds[0].tag' "$EXAMPLE1_BUILD")
+RESULT_IMAGENAME=$(jq -r '.builds[0].imageName' "$EXAMPLE1_BUILD")
+RESULT_DIGEST="${RESULT_TAG##*@}"
+EXPECT_RESULT_NAME="$RESULT_IMAGENAME@$RESULT_DIGEST"
+
+# 1) Result package exists (exact imageName@sha256:64hex) and is documentDescribes
+IMG_NAME="$(jq -r --arg exp "$EXPECT_RESULT_NAME" '.packages[]? | select(.primaryPackagePurpose=="CONTAINER" and .name==$exp) | .name' "$FILE" | head -n1)"
 if [[ -z "$IMG_NAME" ]]; then echo "FAIL: result image container package with digest not found"; exit 1; fi
 RESULT_ID="$(jq -r --arg n "$IMG_NAME" 'first(.packages[]? | select(.name==$n) | .SPDXID) // ""' "$FILE")"
 if [[ -z "$RESULT_ID" ]]; then echo "FAIL: SPDXID for result image not found"; exit 1; fi
@@ -62,5 +77,15 @@ BASE_PURPOSE="$(jq -r --arg id "$BASE_ID" 'first(.packages[]? | select(.SPDXID==
 if [[ "$BASE_PURPOSE" != "CONTAINER" ]]; then echo "FAIL: related base is not a CONTAINER package"; exit 1; fi
 BASE_HAS_SHA256="$(jq -r --arg id "$BASE_ID" 'first(.packages[]? | select(.SPDXID==$id) | .checksums[]? | select(.algorithm=="SHA256") | .checksumValue) // ""' "$FILE")"
 if ! [[ "$BASE_HAS_SHA256" =~ ^[0-9a-f]{64}$ ]]; then echo "FAIL: base image missing SHA256 checksum"; exit 1; fi
+
+# 3) Base package name matches expected for esbuild-main test
+EXPECT_BASE_NAME="gcr.io/distroless/nodejs24-debian12:nonroot"
+BASE_NAME_ACTUAL="$(jq -r --arg id "$BASE_ID" 'first(.packages[]? | select(.SPDXID==$id) | .name) // ""' "$FILE")"
+if [[ "$BASE_NAME_ACTUAL" != "$EXPECT_BASE_NAME" ]]; then
+  echo "FAIL: base image name mismatch"
+  echo "  expected: $EXPECT_BASE_NAME"
+  echo "  actual:   $BASE_NAME_ACTUAL"
+  exit 1
+fi
 
 echo "PASS: SPDX enrichment looks good"
