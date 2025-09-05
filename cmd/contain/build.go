@@ -13,6 +13,7 @@ import (
 	"github.com/turbokube/contain/pkg/appender"
 	"github.com/turbokube/contain/pkg/contain"
 	"github.com/turbokube/contain/pkg/pushed"
+	"github.com/turbokube/contain/pkg/sbom"
 	"github.com/turbokube/contain/pkg/run"
 	"github.com/turbokube/contain/pkg/schema"
 	schemav1 "github.com/turbokube/contain/pkg/schema/v1"
@@ -212,6 +213,15 @@ func runBuild(args []string) error {
 		chdir.Cleanup()
 	}
 	writeBuildOutput(buildOutput)
+
+	// If SBOM flags are provided, wrap/enrich the input SPDX document.
+	if sbomInFile != "" {
+		artifact := &buildOutput.Skaffold.Builds[0]
+		if err := sbom.WrapSPDX(fileOutput, sbomInFile, sbomOutFile, artifact, BUILD); err != nil {
+			wd, _ := os.Getwd()
+			zap.L().Fatal("sbom wrap", zap.String("cwd", wd), zap.String("in", sbomInFile), zap.String("out", sbomOutFile), zap.Error(err))
+		}
+	}
 	return nil
 }
 
