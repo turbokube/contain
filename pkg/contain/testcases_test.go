@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,6 +28,8 @@ import (
 const (
 	// SkipExpectIfDigestMatches can be used to speed up regression testing
 	SkipExpectIfDigestMatches = false
+	// basePathOriginal is the PATH value present in the base image before mutation
+	basePathOriginal = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 )
 
 // cases is an array because a testcase may depend on an output image from an earlier testcase
@@ -420,6 +423,80 @@ var cases = []testcases.Testcase{
 			}
 			Expect(foundFoo).To(BeTrue(), "FOO env present")
 			Expect(foundPath).To(BeTrue(), "PATH override applied")
+		},
+	},
+	{
+		RunConfig: func(config *testcases.TestInput, dir *testcases.TempDir) schema.ContainConfig {
+			dir.Write("x.txt", "x")
+			return schema.ContainConfig{
+				Base:      "contain-test/baseimage-multiarch1:noattest@sha256:f9f2106a04a339d282f1152f0be7c9ce921a0c01320de838cda364948de66bd4",
+				Tag:       "contain-test/pathsubst:test",
+				Layers:    []schema.Layer{{LocalDir: schema.LocalDir{Path: ".", ContainerPath: "/ps"}}},
+				Platforms: []string{"linux/amd64"},
+				Env:       []schema.Env{{Name: "PATH", Value: "${PATH}:/opt/extra"}},
+			}
+		},
+		ExpectDigest: "sha256:264b27fc9c0052f65adb768bb22003dfbff59954b97f2621bffd896ac8b12b89",
+		Expect: func(ref pushed.Artifact, t *testing.T) {
+			img, err := remote.Image(ref.Reference(), testCraneOptions.Remote...)
+			Expect(err).To(BeNil())
+			cfg, err := img.ConfigFile()
+			Expect(err).To(BeNil())
+			var val string
+			for _, e := range cfg.Config.Env {
+				if strings.HasPrefix(e, "PATH=") {
+					val = e
+				}
+			}
+			Expect(val).To(Equal(basePathOriginal+":/opt/extra"), "full ${VAR} expansion value mismatch")
+		},
+	},
+	{
+		RunConfig: func(config *testcases.TestInput, dir *testcases.TempDir) schema.ContainConfig {
+			dir.Write("x.txt", "x")
+			return schema.ContainConfig{
+				Base:      "contain-test/baseimage-multiarch1:noattest@sha256:f9f2106a04a339d282f1152f0be7c9ce921a0c01320de838cda364948de66bd4",
+				Tag:       "contain-test/pathsubst-dollar:test",
+				Layers:    []schema.Layer{{LocalDir: schema.LocalDir{Path: ".", ContainerPath: "/ps2"}}},
+				Platforms: []string{"linux/amd64"},
+				Env:       []schema.Env{{Name: "PATH", Value: "$PATH:/opt/dollar"}},
+			}
+		},
+		ExpectDigest: "sha256:36dc82423ccafe3016b3806b5d3534bfbfba9f05cc8e44a03924c25d3035dbe4",
+		Expect: func(ref pushed.Artifact, t *testing.T) {
+			img, err := remote.Image(ref.Reference(), testCraneOptions.Remote...)
+			Expect(err).To(BeNil())
+			cfg, err := img.ConfigFile()
+			Expect(err).To(BeNil())
+			var val string
+			for _, e := range cfg.Config.Env {
+				if strings.HasPrefix(e, "PATH=") {
+					val = e
+				}
+			}
+			Expect(val).To(Equal(basePathOriginal+":/opt/dollar"), "full $VAR expansion value mismatch")
+		},
+	},
+	{
+		RunConfig: func(config *testcases.TestInput, dir *testcases.TempDir) schema.ContainConfig {
+			dir.Write("main.sh", "#!/bin/sh\necho hi\n")
+			return schema.ContainConfig{
+				Base:       "contain-test/baseimage-multiarch1:noattest@sha256:f9f2106a04a339d282f1152f0be7c9ce921a0c01320de838cda364948de66bd4",
+				Tag:        "contain-test/entrypoint:test",
+				Layers:     []schema.Layer{{LocalDir: schema.LocalDir{Path: ".", ContainerPath: "/ep"}}},
+				Platforms:  []string{"linux/amd64"},
+				Entrypoint: []string{"/ep/main.sh"},
+				Args:       []string{"--flag", "value"},
+			}
+		},
+		ExpectDigest: "sha256:5eadd4f67f7f05c9b1f63a829ac8a9e220fa07d16b354ba59c10c8a76adb2a99",
+		Expect: func(ref pushed.Artifact, t *testing.T) {
+			img, err := remote.Image(ref.Reference(), testCraneOptions.Remote...)
+			Expect(err).To(BeNil())
+			cfg, err := img.ConfigFile()
+			Expect(err).To(BeNil())
+			Expect(cfg.Config.Entrypoint).To(Equal([]string{"/ep/main.sh"}))
+			Expect(cfg.Config.Cmd).To(Equal([]string{"--flag", "value"}))
 		},
 	},
 }

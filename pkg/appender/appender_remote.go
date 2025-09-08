@@ -4,7 +4,6 @@ package appender
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/go-containerregistry/pkg/name"
@@ -22,6 +21,7 @@ const (
 	progressReportMinInterval = "1s"
 )
 
+
 // Appender transfers layers AND pushes manifest
 // and is reasonably efficient should multiple appenders push the same layers
 type Appender struct {
@@ -31,6 +31,10 @@ type Appender struct {
 	annotators []annotate.Annotator
 	// envs holds KEY=VALUE pairs to override/add in resulting image config
 	envs []string
+	// entrypoint overrides the image entrypoint if non-empty
+	entrypoint []string
+	// args (Cmd) overrides image Cmd if non-empty
+	args []string
 }
 
 type AppendAnnotate func(partial.WithRawManifest) v1.Image
@@ -113,6 +117,12 @@ func (c *Appender) WithEnvs(envs []string) {
 	c.envs = envs
 }
 
+// WithEntrypointArgs sets runtime process configuration overrides.
+func (c *Appender) WithEntrypointArgs(entrypoint, args []string) {
+	c.entrypoint = entrypoint
+	c.args = args
+}
+
 func (c *Appender) getPushConfig() *registry.RegistryConfig {
 	return c.baseConfig
 }
@@ -156,47 +166,32 @@ func (c *Appender) Append(layers ...v1.Layer) (AppendResult, error) {
 		zap.L().Error("Failed to append layers", zap.Error(err))
 		return AppendResultNone, err
 	}
-	// Apply env overrides/additions before annotations and push
-	if len(c.envs) > 0 {
+	// Apply env/entrypoint/args overrides before annotations and push
+	if len(c.envs) > 0 || len(c.entrypoint) > 0 || len(c.args) > 0 {
 		cfg, err := img.ConfigFile()
 		if err != nil {
-			zap.L().Error("get image config for env mutate", zap.Error(err))
+			zap.L().Error("get image config for mutate", zap.Error(err))
 			return AppendResultNone, err
 		}
-		// Build map of desired env overrides
-		desired := make(map[string]string, len(c.envs))
-		order := make([]string, 0, len(c.envs))
-		for _, kv := range c.envs {
-			if i := strings.Index(kv, "="); i > 0 {
-				k := kv[:i]
-				v := kv[i+1:]
-				desired[k] = v
-				order = append(order, k)
+		modified := false
+			if len(c.envs) > 0 {
+				cfg.Config.Env = applyEnvOverrides(cfg.Config.Env, c.envs)
+				modified = true
 			}
+		if len(c.entrypoint) > 0 {
+			cfg.Config.Entrypoint = append([]string{}, c.entrypoint...)
+			modified = true
 		}
-		// Rebuild env slice, overriding existing keys
-		existing := cfg.Config.Env
-		seen := make(map[string]struct{}, len(desired))
-		for i, e := range existing {
-			if j := strings.Index(e, "="); j > 0 {
-				k := e[:j]
-				if v, ok := desired[k]; ok {
-					existing[i] = k + "=" + v
-					seen[k] = struct{}{}
-				}
+		if len(c.args) > 0 {
+			cfg.Config.Cmd = append([]string{}, c.args...)
+			modified = true
+		}
+		if modified {
+			img, err = mutate.Config(img, cfg.Config)
+			if err != nil {
+				zap.L().Error("mutate image config", zap.Error(err))
+				return AppendResultNone, err
 			}
-		}
-		// Append any new keys not present before
-		for _, k := range order {
-			if _, ok := seen[k]; !ok {
-				existing = append(existing, k+"="+desired[k])
-			}
-		}
-		cfg.Config.Env = existing
-		img, err = mutate.Config(img, cfg.Config)
-		if err != nil {
-			zap.L().Error("mutate image env config", zap.Error(err))
-			return AppendResultNone, err
 		}
 	}
 	for _, annotate := range c.annotators {

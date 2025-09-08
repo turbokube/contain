@@ -120,6 +120,10 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*pushed.BuildO
 			}
 			a.WithEnvs(envs)
 		}
+		// Process entrypoint/args overrides
+		if len(config.Entrypoint) > 0 || len(config.Args) > 0 {
+			a.WithEntrypointArgs(config.Entrypoint, config.Args)
+		}
 		// Set base image annotation hints as per crane rebase docs
 		if ann, err := annotate.NewBaseImageAnnotations(config.Base); err == nil {
 			a.WithAnnotate(ann)
