@@ -23,7 +23,7 @@
           },
           "type": "array"
         },
-        "envs": {
+        "env": {
           "items": {
             "$ref": "#/$defs/Env"
           },

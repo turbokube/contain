@@ -397,7 +397,7 @@ var cases = []testcases.Testcase{
 					{LocalDir: schema.LocalDir{Path: ".", ContainerPath: "/env"}},
 				},
 				Platforms: []string{"linux/amd64"},
-				Envs: []schema.Env{
+				Env: []schema.Env{
 					{Name: "FOO", Value: "bar"},
 					{Name: "PATH", Value: "/custom/bin"}, // override existing PATH
 				},

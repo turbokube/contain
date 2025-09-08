@@ -10,7 +10,7 @@ type ContainConfig struct {
 	Tag       string            `json:"tag,omitempty" skaffold:"template"`
 	Platforms []string          `json:"platforms,omitempty"`
 	Layers    []Layer           `json:"layers,omitempty"`
-	Envs      []Env             `json:"envs,omitempty"`
+	Env       []Env             `json:"env,omitempty"`
 	Sync      ContainConfigSync `json:"-"`
 }
 

@@ -8,7 +8,7 @@ layers:
     - contain.yaml
     - test.yaml
 tag: "{{.IMAGE}}"
-envs:
+env:
 - name: FOO
   value: bar
 - name: PATH

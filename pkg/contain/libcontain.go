@@ -109,9 +109,9 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*pushed.BuildO
 			return mutate.IndexAddendum{}, err
 		}
 		// Apply env overrides/additions if configured
-		if len(config.Envs) > 0 {
+		if len(config.Env) > 0 {
 			var envs []string
-			for _, e := range config.Envs {
+			for _, e := range config.Env {
 				// simple validation: skip empties
 				if e.Name == "" {
 					continue
