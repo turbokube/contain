@@ -10,6 +10,7 @@ type ContainConfig struct {
 	Tag       string            `json:"tag,omitempty" skaffold:"template"`
 	Platforms []string          `json:"platforms,omitempty"`
 	Layers    []Layer           `json:"layers,omitempty"`
+	Envs      []Env             `json:"envs,omitempty"`
 	Sync      ContainConfigSync `json:"-"`
 }
 
@@ -22,6 +23,11 @@ type ContainConfigStatus struct {
 
 type ContainConfigOverrides struct {
 	Base bool
+}
+
+type Env struct {
+	Name  string `json:"name" skaffold:"template"`
+	Value string `json:"value" skaffold:"template"`
 }
 
 type ContainConfigSync struct {
