@@ -13,6 +13,7 @@ require (
 	github.com/moby/patternmatcher v0.6.0
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/spf13/afero v1.11.0
+	github.com/spf13/cobra v1.9.1
 	go.uber.org/zap v1.27.0
 )
 
@@ -88,7 +89,7 @@ require (
 	github.com/redis/go-redis/extra/rediscmd/v9 v9.0.5 // indirect
 	github.com/redis/go-redis/extra/redisotel/v9 v9.0.5 // indirect
 	github.com/redis/go-redis/v9 v9.7.3 // indirect
-	github.com/spf13/cobra v1.9.1 // indirect
+	github.com/spdx/tools-golang v0.5.5 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/vbatts/tar-split v0.12.1 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect

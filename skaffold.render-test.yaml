@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://github.com/GoogleContainerTools/skaffold/raw/v2.16.1/docs-v2/content/en/schemas/v4beta13.json
+apiVersion: skaffold/v4beta13
+kind: Config
+build:
+  platforms:
+  - linux/amd64
+  - linux/arm64/v8
+  artifacts:
+  - image: contextdir-app
+    context: ./test
+    custom:
+      buildCommand: echo "DUMMY, use skaffold.test.yaml for build"
+manifests:
+  rawYaml:
+  - ./test/contextdir-app-k8s.yaml

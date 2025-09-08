@@ -34,5 +34,6 @@ func (a *Appender) getManifestLayer(layer v1.Descriptor) AppendResultLayer {
 		MediaType: layer.MediaType,
 		Size:      layer.Size,
 		Digest:    layer.Digest,
+		Platform:  layer.Platform,
 	}
 }

@@ -9,17 +9,10 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/types"
-	"github.com/turbokube/contain/pkg/appender"
+	"github.com/turbokube/contain/pkg/pushed"
 	"github.com/turbokube/contain/pkg/registry"
 	schema "github.com/turbokube/contain/pkg/schema/v1"
 	"go.uber.org/zap"
-)
-
-const (
-	ReferenceTypeAnnotation   = "vnd.docker.reference.type"
-	ReferenceTypeAttestation  = "attestation-manifest"
-	AttestationPlatform       = "unknown/unknown"
-	ReferenceDigestAnnotation = "vnd.docker.reference.digest"
 )
 
 var noDigestYet = v1.Hash{}
@@ -127,9 +120,9 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 			continue
 		}
 		if d.Annotations != nil {
-			if d.Platform.String() == AttestationPlatform && d.Annotations[ReferenceTypeAnnotation] == ReferenceTypeAttestation {
+			if d.Platform.String() == pushed.AttestationPlatform && d.Annotations[pushed.ReferenceTypeAnnotation] == pushed.ReferenceTypeAttestation {
 				zap.L().Info("skipping attestation manifest",
-					zap.String("reference", d.Annotations[ReferenceDigestAnnotation]),
+					zap.String("reference", d.Annotations[pushed.ReferenceDigestAnnotation]),
 				)
 				continue
 			}
@@ -237,80 +230,7 @@ func (m *IndexManifests) BaseRef() name.Digest {
 	return m.baseRef
 }
 
-// PushIndex takes the AppendResult of the prototype contain
-// and the original index to push a new multi-arch (i.e. multi-manifest) image
-// Deprecated: hard to use because config can't be updated and referential consistency at push is non-trivial
-func (m *IndexManifests) PushIndex(tag name.Reference, result appender.AppendResult, config *registry.RegistryConfig) (v1.Hash, error) {
-
-	layers := make([]v1.Descriptor, len(result.AddedManifestLayers))
-	for _, prototypeAdded := range result.AddedManifestLayers {
-		layers = append(layers, prototypeAdded.Descriptor())
-	}
-
-	indexAppend := []mutate.IndexAddendum{result.Pushed}
-
-	for i, to := range m.toAppend[1:] {
-		child := to.baseManifest
-		zap.L().Info("layers",
-			zap.Any("child", child),
-			zap.Int("existing", len(child.Layers)),
-			zap.Int("add", len(layers)),
-		)
-		child.Layers = append(child.Layers, layers...)
-		t, err := NewTaggableChild(*child)
-		if err != nil {
-			zap.L().Error("child taggable", zap.Int("index", i), zap.Error(err))
-			return v1.Hash{}, err
-		}
-		err = remote.Put(tag, t, config.CraneOptions.Remote...)
-		if err != nil {
-			zap.L().Error("child put", zap.Error(err))
-			return v1.Hash{}, err
-		}
-		indexAppend = append(indexAppend, mutate.IndexAddendum{
-			Add: t,
-		})
-	}
-
-	index := mutate.AppendManifests(m.indexStart, indexAppend...)
-
-	hash, err := index.Digest()
-	if err != nil {
-		zap.L().Error("index digest", zap.Error(err))
-		return v1.Hash{}, err
-	}
-	manifest, err := index.IndexManifest()
-	if err != nil {
-		zap.L().Error("index manifest", zap.Error(err))
-		return v1.Hash{}, err
-	}
-	zap.L().Info("index",
-		zap.String("digest", hash.String()),
-		zap.Int("manifests", len(manifest.Manifests)),
-	)
-	rawmanifest, err := index.RawManifest()
-	if err != nil {
-		zap.L().Error("index raw manifest", zap.Error(err))
-		return v1.Hash{}, err
-	}
-	zap.L().Info("raw manifest", zap.ByteString("body", rawmanifest))
-
-	taggable, err := NewTaggableIndex(index)
-	if err != nil {
-		zap.L().Error("taggable", zap.Error(err))
-		return v1.Hash{}, err
-	}
-
-	err = remote.Put(tag, taggable, config.CraneOptions.Remote...)
-	if err != nil {
-		zap.L().Error("put", zap.Error(err))
-		return v1.Hash{}, err
-	}
-
-	return hash, nil
-}
-
-func (m *IndexManifests) PushWithAppend(append EachAppend, tagRef name.Reference, tagRegistry *registry.RegistryConfig) (v1.Hash, error) {
+func (m *IndexManifests) PushWithAppend(append EachAppend, tagRef name.Reference, tagRegistry *registry.RegistryConfig) (*pushed.Artifact, error) {
 	var manifests = make([]mutate.IndexAddendum, len(m.toAppend))
 	for i, c := range m.toAppend {
 		if c.meta.Digest != noDigestYet {
@@ -320,7 +240,7 @@ func (m *IndexManifests) PushWithAppend(append EachAppend, tagRef name.Reference
 		manifests[i], err = append(c.base, tagRef, tagRegistry)
 		if err != nil {
 			zap.L().Error("append", zap.Int("item", i), zap.Any("base", c), zap.Error(err))
-			return v1.Hash{}, err
+			return nil, err
 		}
 	}
 	resultIndex := mutate.AppendManifests(m.indexStart, manifests...)
@@ -330,7 +250,7 @@ func (m *IndexManifests) PushWithAppend(append EachAppend, tagRef name.Reference
 	resultTaggable, err := NewTaggableIndex(resultIndex)
 	if err != nil {
 		zap.L().Error("taggable", zap.Any("index", resultIndex), zap.Error(err))
-		return v1.Hash{}, err
+		return nil, err
 	}
 	for _, added := range manifests {
 		zap.L().Debug("index entry addded",
@@ -341,7 +261,12 @@ func (m *IndexManifests) PushWithAppend(append EachAppend, tagRef name.Reference
 	err = remote.Put(tagRef, resultTaggable, tagRegistry.CraneOptions.Remote...)
 	if err != nil {
 		zap.L().Error("index put", zap.Any("ref", tagRef), zap.Error(err))
-		return v1.Hash{}, err
+		return nil, err
 	}
-	return resultIndex.Digest()
+	// Build artifact from the result index
+	d, err := resultIndex.Digest()
+	if err != nil {
+		return nil, err
+	}
+	return pushed.NewIndexImage(tagRef.String(), d, resultIndex, m.baseRef.String())
 }

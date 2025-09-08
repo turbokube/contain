@@ -38,6 +38,7 @@ type AppendResultLayer struct {
 	MediaType types.MediaType `json:"mediaType"`
 	Size      int64           `json:"size"`
 	Digest    v1.Hash         `json:"digest"`
+	Platform  *v1.Platform    `json:"platform,omitempty"`
 }
 
 func (l *AppendResultLayer) Descriptor() v1.Descriptor {
@@ -48,7 +49,7 @@ func (l *AppendResultLayer) Descriptor() v1.Descriptor {
 		Data:         nil,
 		URLs:         nil,
 		Annotations:  nil,
-		Platform:     nil,
+		Platform:     l.Platform,
 		ArtifactType: "",
 	}
 }

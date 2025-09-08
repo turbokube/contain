@@ -11,6 +11,7 @@ import (
 	_ "github.com/distribution/distribution/v3/registry/auth/htpasswd"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/inmemory"
+	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -86,7 +87,11 @@ func (r *TestRegistry) Start() error {
 	go dockerRegistry.ListenAndServe()
 
 	r.Config = registryconfig.RegistryConfig{
-		CraneOptions: crane.Options{},
+		CraneOptions: crane.Options{
+			// Force anonymous auth for local test registry to avoid spawning
+			// docker-credential-helpers via authn.DefaultKeychain.
+			Remote: []remote.Option{remote.WithAuth(authn.Anonymous)},
+		},
 	}
 
 	return nil

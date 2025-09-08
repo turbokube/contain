@@ -1,15 +1,14 @@
-package contain_test
+package pushed
 
 import (
 	"testing"
 
 	. "github.com/onsi/gomega"
-	"github.com/turbokube/contain/pkg/contain"
 )
 
 func TestBuildTraceEnv(t *testing.T) {
 	RegisterTestingT(t)
-	env := contain.BuildTraceEnv([]string{
+	env := BuildTraceEnv([]string{
 		"FOO=bar",
 		"CIX=baz",
 		"CI=true",
