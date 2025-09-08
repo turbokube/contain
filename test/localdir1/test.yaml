@@ -25,3 +25,11 @@ fileExistenceTests:
   permissions: '-rw-r--r--'
   uid: 0
   gid: 0
+commandTests:
+- name: "print path"
+  command: /bin/sh
+  args:
+  - -c
+  - echo $FOO $PATH
+  expectedOutput:
+  - bar /usr/bin:/opt/localdir1/bin

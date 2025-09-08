@@ -8,3 +8,8 @@ layers:
     - contain.yaml
     - test.yaml
 tag: "{{.IMAGE}}"
+env:
+- name: FOO
+  value: bar
+- name: PATH
+  value: ${PATH}:/opt/localdir1/bin

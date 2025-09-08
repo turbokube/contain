@@ -108,6 +108,22 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*pushed.BuildO
 			zap.L().Error("appender", zap.Error(err))
 			return mutate.IndexAddendum{}, err
 		}
+		// Apply env overrides/additions if configured
+		if len(config.Env) > 0 {
+			var envs []string
+			for _, e := range config.Env {
+				// simple validation: skip empties
+				if e.Name == "" {
+					continue
+				}
+				envs = append(envs, fmt.Sprintf("%s=%s", e.Name, e.Value))
+			}
+			a.WithEnvs(envs)
+		}
+		// Process entrypoint/args overrides
+		if len(config.Entrypoint) > 0 || len(config.Args) > 0 {
+			a.WithEntrypointArgs(config.Entrypoint, config.Args)
+		}
 		// Set base image annotation hints as per crane rebase docs
 		if ann, err := annotate.NewBaseImageAnnotations(config.Base); err == nil {
 			a.WithAnnotate(ann)
