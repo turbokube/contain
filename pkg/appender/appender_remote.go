@@ -21,7 +21,6 @@ const (
 	progressReportMinInterval = "1s"
 )
 
-
 // Appender transfers layers AND pushes manifest
 // and is reasonably efficient should multiple appenders push the same layers
 type Appender struct {
@@ -174,10 +173,10 @@ func (c *Appender) Append(layers ...v1.Layer) (AppendResult, error) {
 			return AppendResultNone, err
 		}
 		modified := false
-			if len(c.envs) > 0 {
-				cfg.Config.Env = applyEnvOverrides(cfg.Config.Env, c.envs)
-				modified = true
-			}
+		if len(c.envs) > 0 {
+			cfg.Config.Env = applyEnvOverrides(cfg.Config.Env, c.envs)
+			modified = true
+		}
 		if len(c.entrypoint) > 0 {
 			cfg.Config.Entrypoint = append([]string{}, c.entrypoint...)
 			modified = true
