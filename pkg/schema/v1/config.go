@@ -7,11 +7,13 @@ type ContainConfig struct {
 	// Base is the base image reference
 	Base string `json:"base,omitempty" skaffold:"template"`
 	// Tag is the result reference to be pushed
-	Tag       string            `json:"tag,omitempty" skaffold:"template"`
-	Platforms []string          `json:"platforms,omitempty"`
-	Layers    []Layer           `json:"layers,omitempty"`
-	Env       []Env             `json:"env,omitempty"`
-	Sync      ContainConfigSync `json:"-"`
+	Tag        string            `json:"tag,omitempty" skaffold:"template"`
+	Platforms  []string          `json:"platforms,omitempty"`
+	Layers     []Layer           `json:"layers,omitempty"`
+	Env        []Env             `json:"env,omitempty"`
+	Entrypoint []string          `json:"entrypoint,omitempty"`
+	Args       []string          `json:"args,omitempty"`
+	Sync       ContainConfigSync `json:"-"`
 }
 
 type ContainConfigStatus struct {

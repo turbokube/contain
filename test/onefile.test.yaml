@@ -16,3 +16,10 @@ fileExistenceTests:
 - name: 'notclever'
   path: '/onefile/1.txt/localdir1/a.txt'
   shouldExist: false
+metadataTest:
+  entrypoint:
+  - echo
+  - a
+  cmd:
+  - b
+  - c
