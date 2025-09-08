@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://www.schemastore.org/container-structure-test.json
 schemaVersion: '2.0.0'
 fileExistenceTests:
 - name: '1'
