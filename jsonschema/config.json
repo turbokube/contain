@@ -22,10 +22,32 @@
             "$ref": "#/$defs/Layer"
           },
           "type": "array"
+        },
+        "envs": {
+          "items": {
+            "$ref": "#/$defs/Env"
+          },
+          "type": "array"
         }
       },
       "additionalProperties": false,
       "type": "object"
+    },
+    "Env": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "name",
+        "value"
+      ]
     },
     "Layer": {
       "properties": {

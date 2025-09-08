@@ -4,6 +4,7 @@ package appender
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/go-containerregistry/pkg/name"
@@ -28,6 +29,8 @@ type Appender struct {
 	baseConfig *registry.RegistryConfig
 	tagRef     name.Reference
 	annotators []annotate.Annotator
+	// envs holds KEY=VALUE pairs to override/add in resulting image config
+	envs []string
 }
 
 type AppendAnnotate func(partial.WithRawManifest) v1.Image
@@ -103,6 +106,13 @@ func (c *Appender) WithAnnotate(annotate annotate.Annotator) {
 	c.annotators = append(c.annotators, annotate)
 }
 
+// WithEnvs sets environment variables (name/value pairs) to be applied to the
+// resulting image config. Existing variables are overridden by name; new ones
+// are appended preserving the original order of untouched variables.
+func (c *Appender) WithEnvs(envs []string) {
+	c.envs = envs
+}
+
 func (c *Appender) getPushConfig() *registry.RegistryConfig {
 	return c.baseConfig
 }
@@ -145,6 +155,49 @@ func (c *Appender) Append(layers ...v1.Layer) (AppendResult, error) {
 	if err != nil {
 		zap.L().Error("Failed to append layers", zap.Error(err))
 		return AppendResultNone, err
+	}
+	// Apply env overrides/additions before annotations and push
+	if len(c.envs) > 0 {
+		cfg, err := img.ConfigFile()
+		if err != nil {
+			zap.L().Error("get image config for env mutate", zap.Error(err))
+			return AppendResultNone, err
+		}
+		// Build map of desired env overrides
+		desired := make(map[string]string, len(c.envs))
+		order := make([]string, 0, len(c.envs))
+		for _, kv := range c.envs {
+			if i := strings.Index(kv, "="); i > 0 {
+				k := kv[:i]
+				v := kv[i+1:]
+				desired[k] = v
+				order = append(order, k)
+			}
+		}
+		// Rebuild env slice, overriding existing keys
+		existing := cfg.Config.Env
+		seen := make(map[string]struct{}, len(desired))
+		for i, e := range existing {
+			if j := strings.Index(e, "="); j > 0 {
+				k := e[:j]
+				if v, ok := desired[k]; ok {
+					existing[i] = k + "=" + v
+					seen[k] = struct{}{}
+				}
+			}
+		}
+		// Append any new keys not present before
+		for _, k := range order {
+			if _, ok := seen[k]; !ok {
+				existing = append(existing, k+"="+desired[k])
+			}
+		}
+		cfg.Config.Env = existing
+		img, err = mutate.Config(img, cfg.Config)
+		if err != nil {
+			zap.L().Error("mutate image env config", zap.Error(err))
+			return AppendResultNone, err
+		}
 	}
 	for _, annotate := range c.annotators {
 		img = annotate(img).(v1.Image)

@@ -387,6 +387,41 @@ var cases = []testcases.Testcase{
 			Expect(b.Gid).To(Equal(5678))
 		},
 	},
+	{
+		RunConfig: func(config *testcases.TestInput, dir *testcases.TempDir) schema.ContainConfig {
+			dir.Write("x.txt", "x")
+			return schema.ContainConfig{
+				Base: "contain-test/baseimage-multiarch1:noattest@sha256:f9f2106a04a339d282f1152f0be7c9ce921a0c01320de838cda364948de66bd4",
+				Tag:  "contain-test/envs:test",
+				Layers: []schema.Layer{
+					{LocalDir: schema.LocalDir{Path: ".", ContainerPath: "/env"}},
+				},
+				Platforms: []string{"linux/amd64"},
+				Envs: []schema.Env{
+					{Name: "FOO", Value: "bar"},
+					{Name: "PATH", Value: "/custom/bin"}, // override existing PATH
+				},
+			}
+		},
+		ExpectDigest: "sha256:d164b233af09e91f3461a15e9c3ac7ab1465055b20374a51f21cb9b739111251",
+		Expect: func(ref pushed.Artifact, t *testing.T) {
+			img, err := remote.Image(ref.Reference(), testCraneOptions.Remote...)
+			Expect(err).To(BeNil())
+			cfg, err := img.ConfigFile()
+			Expect(err).To(BeNil())
+			var foundFoo, foundPath bool
+			for _, e := range cfg.Config.Env {
+				if e == "FOO=bar" {
+					foundFoo = true
+				}
+				if e == "PATH=/custom/bin" {
+					foundPath = true
+				}
+			}
+			Expect(foundFoo).To(BeTrue(), "FOO env present")
+			Expect(foundPath).To(BeTrue(), "PATH override applied")
+		},
+	},
 }
 
 func TestTestcases(t *testing.T) {
