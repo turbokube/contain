@@ -4,3 +4,9 @@ layers:
 - localFile:
     path: localdir1/a.txt
     containerPath: /onefile/1.txt
+entrypoint:
+- echo
+- a
+args:
+- b
+- c

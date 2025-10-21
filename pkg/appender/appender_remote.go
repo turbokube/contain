@@ -28,6 +28,12 @@ type Appender struct {
 	baseConfig *registry.RegistryConfig
 	tagRef     name.Reference
 	annotators []annotate.Annotator
+	// envs holds KEY=VALUE pairs to override/add in resulting image config
+	envs []string
+	// entrypoint overrides the image entrypoint if non-empty
+	entrypoint []string
+	// args (Cmd) overrides image Cmd if non-empty
+	args []string
 }
 
 type AppendAnnotate func(partial.WithRawManifest) v1.Image
@@ -103,6 +109,19 @@ func (c *Appender) WithAnnotate(annotate annotate.Annotator) {
 	c.annotators = append(c.annotators, annotate)
 }
 
+// WithEnvs sets environment variables (name/value pairs) to be applied to the
+// resulting image config. Existing variables are overridden by name; new ones
+// are appended preserving the original order of untouched variables.
+func (c *Appender) WithEnvs(envs []string) {
+	c.envs = envs
+}
+
+// WithEntrypointArgs sets runtime process configuration overrides.
+func (c *Appender) WithEntrypointArgs(entrypoint, args []string) {
+	c.entrypoint = entrypoint
+	c.args = args
+}
+
 func (c *Appender) getPushConfig() *registry.RegistryConfig {
 	return c.baseConfig
 }
@@ -145,6 +164,34 @@ func (c *Appender) Append(layers ...v1.Layer) (AppendResult, error) {
 	if err != nil {
 		zap.L().Error("Failed to append layers", zap.Error(err))
 		return AppendResultNone, err
+	}
+	// Apply env/entrypoint/args overrides before annotations and push
+	if len(c.envs) > 0 || len(c.entrypoint) > 0 || len(c.args) > 0 {
+		cfg, err := img.ConfigFile()
+		if err != nil {
+			zap.L().Error("get image config for mutate", zap.Error(err))
+			return AppendResultNone, err
+		}
+		modified := false
+		if len(c.envs) > 0 {
+			cfg.Config.Env = applyEnvOverrides(cfg.Config.Env, c.envs)
+			modified = true
+		}
+		if len(c.entrypoint) > 0 {
+			cfg.Config.Entrypoint = append([]string{}, c.entrypoint...)
+			modified = true
+		}
+		if len(c.args) > 0 {
+			cfg.Config.Cmd = append([]string{}, c.args...)
+			modified = true
+		}
+		if modified {
+			img, err = mutate.Config(img, cfg.Config)
+			if err != nil {
+				zap.L().Error("mutate image config", zap.Error(err))
+				return AppendResultNone, err
+			}
+		}
 	}
 	for _, annotate := range c.annotators {
 		img = annotate(img).(v1.Image)
