@@ -34,6 +34,8 @@ type Appender struct {
 	entrypoint []string
 	// args (Cmd) overrides image Cmd if non-empty
 	args []string
+	// skipPush skips pushing the image to the registry
+	skipPush bool
 }
 
 type AppendAnnotate func(partial.WithRawManifest) v1.Image
@@ -122,6 +124,11 @@ func (c *Appender) WithEntrypointArgs(entrypoint, args []string) {
 	c.args = args
 }
 
+// WithSkipPush configures the appender to skip pushing the image to the registry.
+func (c *Appender) WithSkipPush(skip bool) {
+	c.skipPush = skip
+}
+
 func (c *Appender) getPushConfig() *registry.RegistryConfig {
 	return c.baseConfig
 }
@@ -201,14 +208,16 @@ func (c *Appender) Append(layers ...v1.Layer) (AppendResult, error) {
 		zap.L().Error("Failed to get result image digest", zap.Error(err))
 		return AppendResultNone, err
 	}
-	err = c.push(img)
-	if err != nil {
-		zap.L().Error("Failed to push", zap.Error(err))
-		return AppendResultNone, err
+	if !c.skipPush {
+		err = c.push(img)
+		if err != nil {
+			zap.L().Error("Failed to push", zap.Error(err))
+			return AppendResultNone, err
+		}
+		zap.L().Info("pushed",
+			zap.String("digest", imgDigest.String()),
+		)
 	}
-	zap.L().Info("pushed",
-		zap.String("digest", imgDigest.String()),
-	)
 	delta, err := c.getLayersDeltaForImages(base, img)
 	if err != nil {
 		zap.L().Error("layers delta", zap.Error(err))

@@ -230,7 +230,7 @@ func (m *IndexManifests) BaseRef() name.Digest {
 	return m.baseRef
 }
 
-func (m *IndexManifests) PushWithAppend(append EachAppend, tagRef name.Reference, tagRegistry *registry.RegistryConfig) (*pushed.Artifact, error) {
+func (m *IndexManifests) BuildWithAppend(append EachAppend, tagRef name.Reference, tagRegistry *registry.RegistryConfig, push bool) (v1.ImageIndex, *pushed.Artifact, error) {
 	var manifests = make([]mutate.IndexAddendum, len(m.toAppend))
 	for i, c := range m.toAppend {
 		if c.meta.Digest != noDigestYet {
@@ -240,17 +240,12 @@ func (m *IndexManifests) PushWithAppend(append EachAppend, tagRef name.Reference
 		manifests[i], err = append(c.base, tagRef, tagRegistry)
 		if err != nil {
 			zap.L().Error("append", zap.Int("item", i), zap.Any("base", c), zap.Error(err))
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	resultIndex := mutate.AppendManifests(m.indexStart, manifests...)
 	if resultIndex == nil {
 		zap.L().Fatal("nil result from AppendManifests")
-	}
-	resultTaggable, err := NewTaggableIndex(resultIndex)
-	if err != nil {
-		zap.L().Error("taggable", zap.Any("index", resultIndex), zap.Error(err))
-		return nil, err
 	}
 	for _, added := range manifests {
 		zap.L().Debug("index entry addded",
@@ -258,15 +253,23 @@ func (m *IndexManifests) PushWithAppend(append EachAppend, tagRef name.Reference
 			zap.String("digest", added.Digest.String()),
 		)
 	}
-	err = remote.Put(tagRef, resultTaggable, tagRegistry.CraneOptions.Remote...)
-	if err != nil {
-		zap.L().Error("index put", zap.Any("ref", tagRef), zap.Error(err))
-		return nil, err
+	if push {
+		resultTaggable, err := NewTaggableIndex(resultIndex)
+		if err != nil {
+			zap.L().Error("taggable", zap.Any("index", resultIndex), zap.Error(err))
+			return nil, nil, err
+		}
+		err = remote.Put(tagRef, resultTaggable, tagRegistry.CraneOptions.Remote...)
+		if err != nil {
+			zap.L().Error("index put", zap.Any("ref", tagRef), zap.Error(err))
+			return nil, nil, err
+		}
 	}
 	// Build artifact from the result index
 	d, err := resultIndex.Digest()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return pushed.NewIndexImage(tagRef.String(), d, resultIndex, m.baseRef.String())
+	artifact, err := pushed.NewIndexImage(tagRef.String(), d, resultIndex, m.baseRef.String())
+	return resultIndex, artifact, err
 }
