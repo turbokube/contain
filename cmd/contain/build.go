@@ -36,6 +36,8 @@ var (
 	metadataFile string
 	platformsEnv bool
 	tarballPath  string
+	outputPath   string
+	outputFormat string
 	pushFlag     bool
 )
 
@@ -60,7 +62,9 @@ func newBuildCmd() *cobra.Command {
 	c.Flags().StringVar(&fileOutput, "file-output", "", "produce a builds JSON like Skaffold does")
 	c.Flags().StringVar(&metadataFile, "metadata-file", "", "produce a metadata JSON like buildctl does")
 	c.Flags().BoolVar(&platformsEnv, "platforms-env-require", false, fmt.Sprintf("requires env %s to be set, unless config specifies platforms", envPlatforms))
-	c.Flags().StringVar(&tarballPath, "tarball", "", "write image as a Docker v2 tarball to this path")
+	c.Flags().StringVar(&tarballPath, "tarball", "", "write image as a Docker v2 tarball to this path (shorthand for --output PATH --format tarball)")
+	c.Flags().StringVar(&outputPath, "output", "", "write image to this path (format selected by --format)")
+	c.Flags().StringVar(&outputFormat, "format", "tarball", `output format: "tarball" or "oci" (as in crane pull --format)`)
 	c.Flags().BoolVar(&pushFlag, "push", true, "push image to registry")
 	c.Flags().StringVar(&sbomInFile, "sbom-in", "", "path to SPDX file for the contents of the build")
 	c.Flags().StringVar(&sbomOutFile, "sbom-out", "", "path to SPDX file to write (same as in to overwrite)")
@@ -205,9 +209,18 @@ func runBuild(args []string) error {
 		return nil
 	}
 
+	// --tarball PATH is shorthand for --output PATH --format tarball
+	effectiveOutput := outputPath
+	effectiveFormat := contain.OutputFormat(outputFormat)
+	if tarballPath != "" && outputPath == "" {
+		effectiveOutput = tarballPath
+		effectiveFormat = contain.FormatTarball
+	}
+
 	buildOutput, err := contain.RunAppend(config, layers, contain.WriteOptions{
-		Push:        pushFlag,
-		TarballPath: tarballPath,
+		Push:         pushFlag,
+		OutputPath:   effectiveOutput,
+		OutputFormat: effectiveFormat,
 	})
 	if err != nil {
 		zap.L().Fatal("append", zap.Error(err))

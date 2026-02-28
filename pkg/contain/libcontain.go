@@ -20,8 +20,10 @@ import (
 type WriteOptions struct {
 	// Push enables pushing the image to the registry (default true for backwards compat).
 	Push bool
-	// TarballPath, if non-empty, writes the built image as a Docker v2 tarball.
-	TarballPath string
+	// OutputPath, if non-empty, writes the built image to this path.
+	OutputPath string
+	// OutputFormat selects the output format: "tarball" (default) or "oci".
+	OutputFormat OutputFormat
 }
 
 // Run is what you call if you have a complete config and want to push an artifact
@@ -179,9 +181,13 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer, opts WriteOptio
 		zap.L().Info("single platform", zap.String("tag", buildOutputTag.String()), zap.String("hash", hash.String()))
 	}
 
-	if opts.TarballPath != "" {
-		if err := writeTarball(opts.TarballPath, buildOutputTag, resultImg, resultIdx); err != nil {
-			zap.L().Error("tarball", zap.Error(err))
+	if opts.OutputPath != "" {
+		format := opts.OutputFormat
+		if format == "" {
+			format = FormatTarball
+		}
+		if err := writeOutput(format, opts.OutputPath, buildOutputTag, resultImg, resultIdx); err != nil {
+			zap.L().Error("output", zap.String("format", string(format)), zap.Error(err))
 			return nil, err
 		}
 	}
