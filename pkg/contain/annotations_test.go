@@ -32,7 +32,7 @@ func TestBaseImageAnnotationsWithOverride(t *testing.T) {
 
     layers, err := contain.RunLayers(cfg)
     Expect(err).NotTo(HaveOccurred())
-    buildOutput, err := contain.RunAppend(cfg, layers)
+    buildOutput, err := contain.RunAppend(cfg, layers, contain.WriteOptions{Push: true})
     Expect(err).NotTo(HaveOccurred())
     Expect(buildOutput).NotTo(BeNil())
     Expect(buildOutput.Skaffold).NotTo(BeNil())
@@ -94,7 +94,7 @@ func TestBaseImageAnnotationsWithoutOverride(t *testing.T) {
 
     layers, err := contain.RunLayers(cfg)
     Expect(err).NotTo(HaveOccurred())
-    buildOutput, err := contain.RunAppend(cfg, layers)
+    buildOutput, err := contain.RunAppend(cfg, layers, contain.WriteOptions{Push: true})
     Expect(err).NotTo(HaveOccurred())
     Expect(buildOutput).NotTo(BeNil())
     Expect(buildOutput.Skaffold).NotTo(BeNil())

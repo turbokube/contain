@@ -16,6 +16,14 @@ import (
 	"go.uber.org/zap"
 )
 
+// WriteOptions controls where the built image is written.
+type WriteOptions struct {
+	// Push enables pushing the image to the registry (default true for backwards compat).
+	Push bool
+	// TarballPath, if non-empty, writes the built image as a Docker v2 tarball.
+	TarballPath string
+}
+
 // Run is what you call if you have a complete config and want to push an artifact
 // - Depends on a zap.ReplaceGlobals logger
 // - No side effects other than push to config.Tag (and child tags in case of an index)
@@ -30,7 +38,7 @@ func Run(config schemav1.ContainConfig) (*pushed.Artifact, error) {
 	if err != nil {
 		return nil, err
 	}
-	output, err := RunAppend(config, layers)
+	output, err := RunAppend(config, layers, WriteOptions{Push: true})
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +82,7 @@ func RunLayers(config schemav1.ContainConfig) ([]v1.Layer, error) {
 // Removed NewPushedSingleImage: producers now return *pushed.Artifact directly.
 
 // RunAppend is the remote access part of a run
-func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*pushed.BuildOutput, error) {
+func RunAppend(config schemav1.ContainConfig, layers []v1.Layer, opts WriteOptions) (*pushed.BuildOutput, error) {
 	// source repo can differ from destination repo, we should probably struct tag + remote config
 	var baseRegistry *registry.RegistryConfig
 	var tagRegistry *registry.RegistryConfig
@@ -108,6 +116,7 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*pushed.BuildO
 			zap.L().Error("appender", zap.Error(err))
 			return mutate.IndexAddendum{}, err
 		}
+		a.WithSkipPush(!opts.Push)
 		// Apply env overrides/additions if configured
 		if len(config.Env) > 0 {
 			var envs []string
@@ -139,11 +148,13 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*pushed.BuildO
 	}
 
 	var result *pushed.Artifact
+	var resultImg v1.Image
+	var resultIdx v1.ImageIndex
 
 	if index.SizeAppend() > 1 {
-		result, err = index.PushWithAppend(each, buildOutputTag, tagRegistry)
+		resultIdx, result, err = index.BuildWithAppend(each, buildOutputTag, tagRegistry, opts.Push)
 		if err != nil {
-			zap.L().Error("index push", zap.Error(err))
+			zap.L().Error("index build", zap.Error(err))
 			return nil, err
 		}
 	} else {
@@ -152,20 +163,27 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer) (*pushed.BuildO
 		}
 		pushedAdd, err := each(index.BaseRef(), buildOutputTag, tagRegistry)
 		if err != nil {
-			zap.L().Error("single image push", zap.Error(err))
+			zap.L().Error("single image build", zap.Error(err))
 			return nil, err
 		}
 		// Build artifact for single-image case
-		img, _ := pushedAdd.Add.(v1.Image)
+		resultImg, _ = pushedAdd.Add.(v1.Image)
 		hash, err := pushedAdd.Add.Digest()
 		if err != nil {
 			return nil, err
 		}
-		result, err = pushed.NewSingleImage(buildOutputTag.String(), hash, img, pushedAdd.Descriptor.Platform, config.Base)
+		result, err = pushed.NewSingleImage(buildOutputTag.String(), hash, resultImg, pushedAdd.Descriptor.Platform, config.Base)
 		if err != nil {
 			return nil, err
 		}
 		zap.L().Info("single platform", zap.String("tag", buildOutputTag.String()), zap.String("hash", hash.String()))
+	}
+
+	if opts.TarballPath != "" {
+		if err := writeTarball(opts.TarballPath, buildOutputTag, resultImg, resultIdx); err != nil {
+			zap.L().Error("tarball", zap.Error(err))
+			return nil, err
+		}
 	}
 
 	// Propagate base information from config to the pushed artifact

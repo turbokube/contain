@@ -548,7 +548,7 @@ func TestTestcases(t *testing.T) {
 			layers, err := contain.RunLayers(c)
 			Expect(err).NotTo(HaveOccurred())
 			zap.L().Debug("testcase layers", zap.Int("count", len(layers)))
-			buildOutput, err := contain.RunAppend(c, layers)
+			buildOutput, err := contain.RunAppend(c, layers, contain.WriteOptions{Push: true})
 			Expect(err).NotTo(HaveOccurred())
 			if buildOutput == nil {
 				t.Fatalf("nil buildOutput")

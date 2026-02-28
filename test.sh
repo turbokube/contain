@@ -104,6 +104,8 @@ done
 
 ./test-spdx.sh
 
+./test-tarball.sh
+
 ./test-k8s.sh
 
 echo "All tests passed"
