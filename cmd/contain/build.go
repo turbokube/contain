@@ -64,7 +64,7 @@ func newBuildCmd() *cobra.Command {
 	c.Flags().BoolVar(&platformsEnv, "platforms-env-require", false, fmt.Sprintf("requires env %s to be set, unless config specifies platforms", envPlatforms))
 	c.Flags().StringVar(&tarballPath, "tarball", "", "write image as a Docker v2 tarball to this path (shorthand for --output PATH --format tarball)")
 	c.Flags().StringVar(&outputPath, "output", "", "write image to this path (format selected by --format)")
-	c.Flags().StringVar(&outputFormat, "format", "tarball", `output format: "tarball" or "oci" (as in crane pull --format)`)
+	c.Flags().StringVar(&outputFormat, "format", "oci", `output format: "oci" or "tarball" (as in crane pull --format)`)
 	c.Flags().BoolVar(&pushFlag, "push", true, "push image to registry")
 	c.Flags().StringVar(&sbomInFile, "sbom-in", "", "path to SPDX file for the contents of the build")
 	c.Flags().StringVar(&sbomOutFile, "sbom-out", "", "path to SPDX file to write (same as in to overwrite)")
