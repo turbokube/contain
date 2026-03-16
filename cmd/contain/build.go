@@ -229,6 +229,10 @@ func runBuild(args []string) error {
 	buildOutput.Trace = &pushed.BuildTrace{Start: &tStart, End: &tEnd, Env: pushed.BuildTraceEnv(os.Environ())}
 	buildOutput.Print()
 
+	if effectiveOutput != "" {
+		setArtifactOutput(buildOutput, effectiveOutput, string(effectiveFormat))
+	}
+
 	if chdir != nil {
 		chdir.Cleanup()
 	}
@@ -243,6 +247,45 @@ func runBuild(args []string) error {
 		}
 	}
 	return nil
+}
+
+// setArtifactOutput sets the Output field on each artifact.
+// If fileOutput is set and outputPath is relative, the path is rewritten
+// to be relative to the file-output file's directory.
+func setArtifactOutput(buildOutput *pushed.BuildOutput, outputPath string, format string) {
+	resolvedPath := resolveOutputPath(outputPath, fileOutput)
+	out := &pushed.ArtifactOutput{Path: resolvedPath, Format: format}
+	for i := range buildOutput.Skaffold.Builds {
+		buildOutput.Skaffold.Builds[i].Output = out
+	}
+}
+
+// resolveOutputPath rewrites outputPath to be relative to the directory of
+// fileOutputPath when both are set and outputPath is relative.
+// Absolute outputPaths are returned unchanged.
+func resolveOutputPath(outputPath string, fileOutputPath string) string {
+	if fileOutputPath == "" || filepath.IsAbs(outputPath) {
+		return outputPath
+	}
+	fileOutputDir := filepath.Dir(fileOutputPath)
+	absOutput, err := filepath.Abs(outputPath)
+	if err != nil {
+		return outputPath
+	}
+	absFileOutputDir, err := filepath.Abs(fileOutputDir)
+	if err != nil {
+		return outputPath
+	}
+	rel, err := filepath.Rel(absFileOutputDir, absOutput)
+	if err != nil {
+		return outputPath
+	}
+	zap.L().Info("output path rewritten relative to file-output",
+		zap.String("original", outputPath),
+		zap.String("relative-to", fileOutputDir),
+		zap.String("resolved", rel),
+	)
+	return rel
 }
 
 func writeBuildOutput(buildOutput *pushed.BuildOutput) {

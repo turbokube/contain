@@ -25,12 +25,20 @@ type Artifact struct {
 	Platforms []v1.Platform `json:"platforms"`
 	// BaseRef is the configured base image reference as provided (may include @sha256:digest)
 	BaseRef string `json:"base,omitempty"`
+	// Output is the local path and format where the image was written, if --output was used.
+	Output *ArtifactOutput `json:"output,omitempty"`
 	// reference is kept internally for reuse
 	reference name.Reference
 	// http is kept internally to assist http access
 	hash v1.Hash
 	// singleImageConfigHash is optional for BuildOutput and can't be reconstructed from JSON
 	singleImageConfigHash v1.Hash
+}
+
+// ArtifactOutput describes where the built image was written locally.
+type ArtifactOutput struct {
+	Path   string `json:"path"`
+	Format string `json:"format"`
 }
 
 type ArtifactHttp struct {
