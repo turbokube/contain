@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/turbokube/contain/pkg/appender"
 	"github.com/turbokube/contain/pkg/contain"
+	containenv "github.com/turbokube/contain/pkg/env"
 	"github.com/turbokube/contain/pkg/pushed"
 	"github.com/turbokube/contain/pkg/sbom"
 	"github.com/turbokube/contain/pkg/run"
@@ -52,7 +53,7 @@ func newBuildCmd() *cobra.Command {
 			}
 			return nil
 		},
-		RunE: func(cmd *cobra.Command, args []string) error { return runBuild(args) },
+		RunE: func(cmd *cobra.Command, args []string) error { return runBuild(cmd, args) },
 	}
 	c.Flags().StringVarP(&configPath, "c", "c", "contain.yaml", "config file path relative to context dir, or - for stdin")
 	c.Flags().StringVarP(&base, "b", "b", "", "base image (implies tag = $IMAGE, local dir = $PWD, container path = /app)")
@@ -71,7 +72,7 @@ func newBuildCmd() *cobra.Command {
 	return c
 }
 
-func runBuild(args []string) error {
+func runBuild(cmd *cobra.Command, args []string) error {
 	if version {
 		fmt.Fprintf(os.Stderr, "%s\n", BUILD)
 		return nil
@@ -217,6 +218,34 @@ func runBuild(args []string) error {
 		effectiveFormat = contain.FormatTarball
 	}
 
+	// CONTAIN_PUSH env: override --push default, but explicit flag takes precedence
+	pushEnv, err := containenv.PushOption()
+	if err != nil {
+		return err
+	}
+	if pushEnv != nil {
+		flagChanged := cmd.Flags().Lookup("push") != nil && cmd.Flags().Changed("push")
+		if !flagChanged {
+			pushFlag = *pushEnv
+			zap.L().Info("push from env", zap.Bool("CONTAIN_PUSH", *pushEnv))
+		}
+	}
+
+	// CONTAIN_OCI_OUTPUT env: enable OCI output to a relative path
+	ociEnv, err := containenv.OCIOutput()
+	if err != nil {
+		return err
+	}
+	if ociEnv != nil {
+		formatChanged := cmd.Flags().Lookup("format") != nil && cmd.Flags().Changed("format")
+		if tarballPath != "" || outputPath != "" || formatChanged {
+			return fmt.Errorf("CONTAIN_OCI_OUTPUT cannot be combined with --tarball, --output, or --format")
+		}
+		effectiveOutput = ociEnv.Path
+		effectiveFormat = contain.FormatOCI
+		zap.L().Info("output from env", zap.String("CONTAIN_OCI_OUTPUT", ociEnv.Path))
+	}
+
 	buildOutput, err := contain.RunAppend(config, layers, contain.WriteOptions{
 		Push:         pushFlag,
 		OutputPath:   effectiveOutput,
@@ -228,6 +257,10 @@ func runBuild(args []string) error {
 	tEnd := time.Now()
 	buildOutput.Trace = &pushed.BuildTrace{Start: &tStart, End: &tEnd, Env: pushed.BuildTraceEnv(os.Environ())}
 	buildOutput.Print()
+
+	if h := containenv.TurboHash(); h != "" {
+		buildOutput.Skaffold.Turborepo = &pushed.TurborepoMeta{Hash: h}
+	}
 
 	if effectiveOutput != "" {
 		setArtifactOutput(buildOutput, effectiveOutput, string(effectiveFormat))

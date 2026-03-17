@@ -159,4 +159,59 @@ func TestBuildOutput(t *testing.T) {
 			t.Errorf("missing or wrong image.name")
 		}
 	})
+
+	t.Run("turborepo in skaffold JSON", func(t *testing.T) {
+		o := &BuildOutput{
+			Skaffold: &BuildOutputSkaffoldSuperset{
+				Builds:    []Artifact{},
+				Turborepo: &TurborepoMeta{Hash: "abc123def"},
+			},
+		}
+		f, err := os.CreateTemp("", ".json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(f.Name())
+		o.WriteSkaffoldJSON(f)
+		jsonBytes, err := os.ReadFile(f.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(jsonBytes, &parsed); err != nil {
+			t.Fatalf("invalid JSON: %v", err)
+		}
+		tr, ok := parsed["turborepo"].(map[string]interface{})
+		if !ok {
+			t.Fatal("turborepo field missing or not an object")
+		}
+		if tr["hash"] != "abc123def" {
+			t.Errorf("turborepo.hash = %v, want abc123def", tr["hash"])
+		}
+	})
+
+	t.Run("turborepo omitted when nil", func(t *testing.T) {
+		o := &BuildOutput{
+			Skaffold: &BuildOutputSkaffoldSuperset{
+				Builds: []Artifact{},
+			},
+		}
+		f, err := os.CreateTemp("", ".json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(f.Name())
+		o.WriteSkaffoldJSON(f)
+		jsonBytes, err := os.ReadFile(f.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(jsonBytes, &parsed); err != nil {
+			t.Fatalf("invalid JSON: %v", err)
+		}
+		if _, exists := parsed["turborepo"]; exists {
+			t.Error("turborepo should be omitted when nil")
+		}
+	})
 }

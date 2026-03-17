@@ -104,7 +104,7 @@ done
 
 ./test-spdx.sh
 
-./test-tarball.sh
+./test-oci.sh
 
 ./test-k8s.sh
 

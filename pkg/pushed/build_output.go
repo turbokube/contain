@@ -29,7 +29,13 @@ func (b *BuildOutput) Print() {
 }
 
 type BuildOutputSkaffoldSuperset struct {
-	Builds []Artifact `json:"builds"`
+	Builds    []Artifact     `json:"builds"`
+	Turborepo *TurborepoMeta `json:"turborepo,omitempty"`
+}
+
+// TurborepoMeta is optional metadata linking a build to a turborepo cache entry.
+type TurborepoMeta struct {
+	Hash string `json:"hash"`
 }
 
 // Artifact returns the one artifact we built (the Skaffold format supports >=0)

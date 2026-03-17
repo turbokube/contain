@@ -18,7 +18,7 @@ var rootCmd = &cobra.Command{
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error { // default to build
 		implicitRoot = true
-		return runBuild(args)
+		return runBuild(cmd, args)
 	},
 }
 
