@@ -24,6 +24,7 @@ func LayerToContainer(layer v1.Layer, target *SyncTarget) error {
 		"-C",
 		"/",
 		"--no-same-owner",
+		"--overwrite",
 	}
 	addEnv := []string{}
 	copyCmd := exec.Command("kubectl", arg...)
