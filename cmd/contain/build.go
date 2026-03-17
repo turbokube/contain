@@ -154,7 +154,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			if repoExists && rtagExists {
 				config.Tag = fmt.Sprintf("%s:%s", repo, rtag)
 				zap.L().Debug("read IMAGE_REPO and IMAGE_TAG env", zap.String("tag", config.Tag))
-			} else {
+			} else if runSelector == "" {
 				zap.L().Fatal("config tag must be set, or env IMAGE, or envs IMAGE_REPO and IMAGE_TAG")
 			}
 		}
