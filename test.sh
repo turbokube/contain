@@ -7,10 +7,20 @@ set -eo pipefail
 
 go test ./pkg/...
 
+command -v container-structure-test >/dev/null 2>&1 || {
+  echo "container-structure-test not found. Install it or use y-container-structure-test from ystack."
+  exit 1
+}
+
 DOCKER=docker
 REGISTRY_PORT=22500
 REGISTRY_NAME=contain-test-registry
 DEFAULT_REPO=--default-repo=localhost:$REGISTRY_PORT
+
+# Prevent skaffold from detecting local k8s clusters (e.g. k3d) which
+# breaks multi-platform builds and container-structure-test image pull.
+# Note that test-k8s.sh manages its own KUBECONFIG.
+export KUBECONFIG=/dev/null
 
 $DOCKER inspect $REGISTRY_NAME 2>/dev/null >/dev/null ||
   $DOCKER run --rm -d -p 22500:5000 --name $REGISTRY_NAME registry:2
@@ -104,7 +114,7 @@ done
 
 ./test-spdx.sh
 
-./test-tarball.sh
+./test-oci.sh
 
 ./test-k8s.sh
 

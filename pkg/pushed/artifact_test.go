@@ -72,6 +72,62 @@ func TestNewSingleImage_AndJSONRoundTrip(t *testing.T) {
 	Expect(b.BaseRef).To(Equal("busybox:latest@sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"))
 }
 
+func TestArtifactOutput_JSONRoundTrip(t *testing.T) {
+	RegisterTestingT(t)
+	img, err := random.Image(512, 1)
+	Expect(err).NotTo(HaveOccurred())
+	digest, err := img.Digest()
+	Expect(err).NotTo(HaveOccurred())
+
+	platform := &v1.Platform{OS: "linux", Architecture: "amd64"}
+	tag := "localhost:22500/test:v1"
+
+	a, err := NewSingleImage(tag, digest, img, platform, "busybox:latest@sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")
+	Expect(err).NotTo(HaveOccurred())
+
+	a.Output = &ArtifactOutput{Path: "../out", Format: "oci"}
+
+	raw, err := json.Marshal(a)
+	Expect(err).NotTo(HaveOccurred())
+
+	// Verify output field in generic JSON
+	var generic map[string]any
+	Expect(json.Unmarshal(raw, &generic)).To(Succeed())
+	outMap, ok := generic["output"].(map[string]any)
+	Expect(ok).To(BeTrue(), "output field should be an object")
+	Expect(outMap["path"]).To(Equal("../out"))
+	Expect(outMap["format"]).To(Equal("oci"))
+
+	// Verify round-trip through typed unmarshal
+	var b Artifact
+	Expect(json.Unmarshal(raw, &b)).To(Succeed())
+	Expect(b.Output).NotTo(BeNil())
+	Expect(b.Output.Path).To(Equal("../out"))
+	Expect(b.Output.Format).To(Equal("oci"))
+}
+
+func TestArtifactOutput_OmittedWhenNil(t *testing.T) {
+	RegisterTestingT(t)
+	img, err := random.Image(512, 1)
+	Expect(err).NotTo(HaveOccurred())
+	digest, err := img.Digest()
+	Expect(err).NotTo(HaveOccurred())
+
+	platform := &v1.Platform{OS: "linux", Architecture: "amd64"}
+	tag := "localhost:22500/test:v1"
+
+	a, err := NewSingleImage(tag, digest, img, platform, "busybox:latest@sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")
+	Expect(err).NotTo(HaveOccurred())
+
+	raw, err := json.Marshal(a)
+	Expect(err).NotTo(HaveOccurred())
+
+	var generic map[string]any
+	Expect(json.Unmarshal(raw, &generic)).To(Succeed())
+	_, exists := generic["output"]
+	Expect(exists).To(BeFalse(), "output field should be omitted when nil")
+}
+
 func TestNewIndexImage_AndJSONRoundTrip(t *testing.T) {
 	RegisterTestingT(t)
 	// Two random child images for different platforms

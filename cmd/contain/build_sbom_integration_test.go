@@ -9,6 +9,7 @@ import (
     "reflect"
     "testing"
 
+    "github.com/spf13/cobra"
     "github.com/turbokube/contain/pkg/sbom"
     "github.com/turbokube/contain/pkg/testcases"
 )
@@ -84,7 +85,12 @@ func TestBuildWithSBOMFlags_EqualsSeparateSbom(t *testing.T) {
     sbomInFile = inSPDX
     sbomOutFile = combinedOut
 
-    if err := runBuild([]string{dir}); err != nil {
+    // Use a bare cobra command — we set global vars directly above,
+    // and newBuildCmd() would rebind them with defaults.
+    stubCmd := &cobra.Command{}
+    stubCmd.Flags().Bool("push", true, "")
+    stubCmd.Flags().String("format", "oci", "")
+    if err := runBuild(stubCmd, []string{dir}); err != nil {
         t.Fatalf("runBuild combined: %v", err)
     }
 

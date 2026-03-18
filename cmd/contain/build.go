@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/turbokube/contain/pkg/appender"
 	"github.com/turbokube/contain/pkg/contain"
+	containenv "github.com/turbokube/contain/pkg/env"
 	"github.com/turbokube/contain/pkg/pushed"
 	"github.com/turbokube/contain/pkg/sbom"
 	"github.com/turbokube/contain/pkg/run"
@@ -36,6 +37,8 @@ var (
 	metadataFile string
 	platformsEnv bool
 	tarballPath  string
+	outputPath   string
+	outputFormat string
 	pushFlag     bool
 )
 
@@ -50,7 +53,7 @@ func newBuildCmd() *cobra.Command {
 			}
 			return nil
 		},
-		RunE: func(cmd *cobra.Command, args []string) error { return runBuild(args) },
+		RunE: func(cmd *cobra.Command, args []string) error { return runBuild(cmd, args) },
 	}
 	c.Flags().StringVarP(&configPath, "c", "c", "contain.yaml", "config file path relative to context dir, or - for stdin")
 	c.Flags().StringVarP(&base, "b", "b", "", "base image (implies tag = $IMAGE, local dir = $PWD, container path = /app)")
@@ -60,14 +63,16 @@ func newBuildCmd() *cobra.Command {
 	c.Flags().StringVar(&fileOutput, "file-output", "", "produce a builds JSON like Skaffold does")
 	c.Flags().StringVar(&metadataFile, "metadata-file", "", "produce a metadata JSON like buildctl does")
 	c.Flags().BoolVar(&platformsEnv, "platforms-env-require", false, fmt.Sprintf("requires env %s to be set, unless config specifies platforms", envPlatforms))
-	c.Flags().StringVar(&tarballPath, "tarball", "", "write image as a Docker v2 tarball to this path")
+	c.Flags().StringVar(&tarballPath, "tarball", "", "write image as a Docker v2 tarball to this path (shorthand for --output PATH --format tarball)")
+	c.Flags().StringVar(&outputPath, "output", "", "write image to this path (format selected by --format)")
+	c.Flags().StringVar(&outputFormat, "format", "oci", `output format: "oci" or "tarball" (as in crane pull --format)`)
 	c.Flags().BoolVar(&pushFlag, "push", true, "push image to registry")
 	c.Flags().StringVar(&sbomInFile, "sbom-in", "", "path to SPDX file for the contents of the build")
 	c.Flags().StringVar(&sbomOutFile, "sbom-out", "", "path to SPDX file to write (same as in to overwrite)")
 	return c
 }
 
-func runBuild(args []string) error {
+func runBuild(cmd *cobra.Command, args []string) error {
 	if version {
 		fmt.Fprintf(os.Stderr, "%s\n", BUILD)
 		return nil
@@ -149,7 +154,7 @@ func runBuild(args []string) error {
 			if repoExists && rtagExists {
 				config.Tag = fmt.Sprintf("%s:%s", repo, rtag)
 				zap.L().Debug("read IMAGE_REPO and IMAGE_TAG env", zap.String("tag", config.Tag))
-			} else {
+			} else if runSelector == "" {
 				zap.L().Fatal("config tag must be set, or env IMAGE, or envs IMAGE_REPO and IMAGE_TAG")
 			}
 		}
@@ -205,9 +210,46 @@ func runBuild(args []string) error {
 		return nil
 	}
 
+	// --tarball PATH is shorthand for --output PATH --format tarball
+	effectiveOutput := outputPath
+	effectiveFormat := contain.OutputFormat(outputFormat)
+	if tarballPath != "" && outputPath == "" {
+		effectiveOutput = tarballPath
+		effectiveFormat = contain.FormatTarball
+	}
+
+	// CONTAIN_PUSH env: override --push default, but explicit flag takes precedence
+	pushEnv, err := containenv.PushOption()
+	if err != nil {
+		return err
+	}
+	if pushEnv != nil {
+		flagChanged := cmd.Flags().Lookup("push") != nil && cmd.Flags().Changed("push")
+		if !flagChanged {
+			pushFlag = *pushEnv
+			zap.L().Info("push from env", zap.Bool("CONTAIN_PUSH", *pushEnv))
+		}
+	}
+
+	// CONTAIN_OCI_OUTPUT env: enable OCI output to a relative path
+	ociEnv, err := containenv.OCIOutput()
+	if err != nil {
+		return err
+	}
+	if ociEnv != nil {
+		formatChanged := cmd.Flags().Lookup("format") != nil && cmd.Flags().Changed("format")
+		if tarballPath != "" || outputPath != "" || formatChanged {
+			return fmt.Errorf("CONTAIN_OCI_OUTPUT cannot be combined with --tarball, --output, or --format")
+		}
+		effectiveOutput = ociEnv.Path
+		effectiveFormat = contain.FormatOCI
+		zap.L().Info("output from env", zap.String("CONTAIN_OCI_OUTPUT", ociEnv.Path))
+	}
+
 	buildOutput, err := contain.RunAppend(config, layers, contain.WriteOptions{
-		Push:        pushFlag,
-		TarballPath: tarballPath,
+		Push:         pushFlag,
+		OutputPath:   effectiveOutput,
+		OutputFormat: effectiveFormat,
 	})
 	if err != nil {
 		zap.L().Fatal("append", zap.Error(err))
@@ -215,6 +257,14 @@ func runBuild(args []string) error {
 	tEnd := time.Now()
 	buildOutput.Trace = &pushed.BuildTrace{Start: &tStart, End: &tEnd, Env: pushed.BuildTraceEnv(os.Environ())}
 	buildOutput.Print()
+
+	if h := containenv.TurboHash(); h != "" {
+		buildOutput.Skaffold.Turborepo = &pushed.TurborepoMeta{Hash: h}
+	}
+
+	if effectiveOutput != "" {
+		setArtifactOutput(buildOutput, effectiveOutput, string(effectiveFormat))
+	}
 
 	if chdir != nil {
 		chdir.Cleanup()
@@ -230,6 +280,45 @@ func runBuild(args []string) error {
 		}
 	}
 	return nil
+}
+
+// setArtifactOutput sets the Output field on each artifact.
+// If fileOutput is set and outputPath is relative, the path is rewritten
+// to be relative to the file-output file's directory.
+func setArtifactOutput(buildOutput *pushed.BuildOutput, outputPath string, format string) {
+	resolvedPath := resolveOutputPath(outputPath, fileOutput)
+	out := &pushed.ArtifactOutput{Path: resolvedPath, Format: format}
+	for i := range buildOutput.Skaffold.Builds {
+		buildOutput.Skaffold.Builds[i].Output = out
+	}
+}
+
+// resolveOutputPath rewrites outputPath to be relative to the directory of
+// fileOutputPath when both are set and outputPath is relative.
+// Absolute outputPaths are returned unchanged.
+func resolveOutputPath(outputPath string, fileOutputPath string) string {
+	if fileOutputPath == "" || filepath.IsAbs(outputPath) {
+		return outputPath
+	}
+	fileOutputDir := filepath.Dir(fileOutputPath)
+	absOutput, err := filepath.Abs(outputPath)
+	if err != nil {
+		return outputPath
+	}
+	absFileOutputDir, err := filepath.Abs(fileOutputDir)
+	if err != nil {
+		return outputPath
+	}
+	rel, err := filepath.Rel(absFileOutputDir, absOutput)
+	if err != nil {
+		return outputPath
+	}
+	zap.L().Info("output path rewritten relative to file-output",
+		zap.String("original", outputPath),
+		zap.String("relative-to", fileOutputDir),
+		zap.String("resolved", rel),
+	)
+	return rel
 }
 
 func writeBuildOutput(buildOutput *pushed.BuildOutput) {
