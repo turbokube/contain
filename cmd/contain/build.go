@@ -249,22 +249,44 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		zap.L().Info("output from env", zap.String("CONTAIN_OCI_OUTPUT", ociEnv.Path))
 	}
 
-	// Push lock: flag takes precedence over env
-	effectivePushLockPath := pushLockPath
-	if effectivePushLockPath == "" {
+	// Push lock: --push-lock flag overrides CONTAIN_PUSH_LOCK_PATH env.
+	// --push-lock= or --push-lock=/dev/null explicitly disables locking.
+	var plock pushlock.PushLock
+	pushLockFlagChanged := cmd.Flags().Lookup("push-lock") != nil && cmd.Flags().Changed("push-lock")
+	if pushLockFlagChanged {
+		envPath, _ := containenv.PushLockPath()
+		if pushLockPath == "" || pushLockPath == "/dev/null" {
+			if envPath != "" {
+				zap.L().Info("push lock disabled by flag, overriding env",
+					zap.String("CONTAIN_PUSH_LOCK_PATH", envPath),
+					zap.String("--push-lock", pushLockPath),
+				)
+			}
+		} else {
+			if envPath != "" && envPath != pushLockPath {
+				zap.L().Info("push lock path from flag, overriding env",
+					zap.String("CONTAIN_PUSH_LOCK_PATH", envPath),
+					zap.String("--push-lock", pushLockPath),
+				)
+			}
+			pl, err := pushlock.NewFlockPushLock(pushLockPath, zap.L())
+			if err != nil {
+				return err
+			}
+			plock = pl
+		}
+	} else {
 		envPath, err := containenv.PushLockPath()
 		if err != nil {
 			return err
 		}
-		effectivePushLockPath = envPath
-	}
-	var plock pushlock.PushLock
-	if effectivePushLockPath != "" {
-		pl, err := pushlock.NewFlockPushLock(effectivePushLockPath, zap.L())
-		if err != nil {
-			return err
+		if envPath != "" {
+			pl, err := pushlock.NewFlockPushLock(envPath, zap.L())
+			if err != nil {
+				return err
+			}
+			plock = pl
 		}
-		plock = pl
 	}
 
 	buildOutput, err := contain.RunAppend(config, layers, contain.WriteOptions{
