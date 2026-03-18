@@ -3,6 +3,7 @@
 package appender
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/turbokube/contain/pkg/annotate"
+	"github.com/turbokube/contain/pkg/pushlock"
 	"github.com/turbokube/contain/pkg/registry"
 	"go.uber.org/zap"
 )
@@ -36,6 +38,8 @@ type Appender struct {
 	args []string
 	// skipPush skips pushing the image to the registry
 	skipPush bool
+	// pushLock serializes push operations across processes
+	pushLock pushlock.PushLock
 }
 
 type AppendAnnotate func(partial.WithRawManifest) v1.Image
@@ -129,6 +133,11 @@ func (c *Appender) WithSkipPush(skip bool) {
 	c.skipPush = skip
 }
 
+// WithPushLock sets an optional lock to serialize push operations across processes.
+func (c *Appender) WithPushLock(lock pushlock.PushLock) {
+	c.pushLock = lock
+}
+
 func (c *Appender) getPushConfig() *registry.RegistryConfig {
 	return c.baseConfig
 }
@@ -209,6 +218,14 @@ func (c *Appender) Append(layers ...v1.Layer) (AppendResult, error) {
 		return AppendResultNone, err
 	}
 	if !c.skipPush {
+		if c.pushLock != nil {
+			release, lockErr := c.pushLock.Acquire(context.Background())
+			if lockErr != nil {
+				zap.L().Error("push lock acquire", zap.Error(lockErr))
+				return AppendResultNone, lockErr
+			}
+			defer release()
+		}
 		err = c.push(img)
 		if err != nil {
 			zap.L().Error("Failed to push", zap.Error(err))

@@ -14,6 +14,7 @@ import (
 	"github.com/turbokube/contain/pkg/contain"
 	containenv "github.com/turbokube/contain/pkg/env"
 	"github.com/turbokube/contain/pkg/pushed"
+	"github.com/turbokube/contain/pkg/pushlock"
 	"github.com/turbokube/contain/pkg/sbom"
 	"github.com/turbokube/contain/pkg/run"
 	"github.com/turbokube/contain/pkg/schema"
@@ -40,6 +41,7 @@ var (
 	outputPath   string
 	outputFormat string
 	pushFlag     bool
+	pushLockPath string
 )
 
 // newBuildCmd defines the build subcommand and its flags
@@ -67,6 +69,7 @@ func newBuildCmd() *cobra.Command {
 	c.Flags().StringVar(&outputPath, "output", "", "write image to this path (format selected by --format)")
 	c.Flags().StringVar(&outputFormat, "format", "oci", `output format: "oci" or "tarball" (as in crane pull --format)`)
 	c.Flags().BoolVar(&pushFlag, "push", true, "push image to registry")
+	c.Flags().StringVar(&pushLockPath, "push-lock", "", "absolute path to flock file for serializing pushes across processes")
 	c.Flags().StringVar(&sbomInFile, "sbom-in", "", "path to SPDX file for the contents of the build")
 	c.Flags().StringVar(&sbomOutFile, "sbom-out", "", "path to SPDX file to write (same as in to overwrite)")
 	return c
@@ -246,10 +249,29 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		zap.L().Info("output from env", zap.String("CONTAIN_OCI_OUTPUT", ociEnv.Path))
 	}
 
+	// Push lock: flag takes precedence over env
+	effectivePushLockPath := pushLockPath
+	if effectivePushLockPath == "" {
+		envPath, err := containenv.PushLockPath()
+		if err != nil {
+			return err
+		}
+		effectivePushLockPath = envPath
+	}
+	var plock pushlock.PushLock
+	if effectivePushLockPath != "" {
+		pl, err := pushlock.NewFlockPushLock(effectivePushLockPath, zap.L())
+		if err != nil {
+			return err
+		}
+		plock = pl
+	}
+
 	buildOutput, err := contain.RunAppend(config, layers, contain.WriteOptions{
 		Push:         pushFlag,
 		OutputPath:   effectiveOutput,
 		OutputFormat: effectiveFormat,
+		PushLock:     plock,
 	})
 	if err != nil {
 		zap.L().Fatal("append", zap.Error(err))

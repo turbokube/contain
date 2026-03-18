@@ -39,6 +39,19 @@ func OCIOutput() (*OCIOutputOption, error) {
 	return &OCIOutputOption{Path: v}, nil
 }
 
+// PushLockPath returns the value of CONTAIN_PUSH_LOCK_PATH if set.
+// Returns error if the path is not absolute.
+func PushLockPath() (string, error) {
+	v, ok := os.LookupEnv("CONTAIN_PUSH_LOCK_PATH")
+	if !ok || v == "" {
+		return "", nil
+	}
+	if !filepath.IsAbs(v) {
+		return "", fmt.Errorf("CONTAIN_PUSH_LOCK_PATH must be absolute, got %q", v)
+	}
+	return v, nil
+}
+
 // TurboHash returns the value of TURBO_HASH if set, empty string otherwise.
 func TurboHash() string {
 	return os.Getenv("TURBO_HASH")
