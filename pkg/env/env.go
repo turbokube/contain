@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 // PushOption returns the value of CONTAIN_PUSH as a *bool.
@@ -35,6 +36,10 @@ func OCIOutput() (*OCIOutputOption, error) {
 	}
 	if filepath.IsAbs(v) {
 		return nil, fmt.Errorf("CONTAIN_OCI_OUTPUT must be a relative path, got %q", v)
+	}
+	cleaned := filepath.Clean(v)
+	if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return nil, fmt.Errorf("CONTAIN_OCI_OUTPUT must not escape the working directory, got %q", v)
 	}
 	return &OCIOutputOption{Path: v}, nil
 }

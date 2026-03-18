@@ -100,6 +100,30 @@ func TestOCIOutput_RelativeNested(t *testing.T) {
 	}
 }
 
+func TestOCIOutput_ParentTraversal(t *testing.T) {
+	t.Setenv("CONTAIN_OCI_OUTPUT", "../escape")
+	_, err := OCIOutput()
+	if err == nil {
+		t.Fatal("expected error for ../ path")
+	}
+}
+
+func TestOCIOutput_ParentTraversalNested(t *testing.T) {
+	t.Setenv("CONTAIN_OCI_OUTPUT", "foo/../../escape")
+	_, err := OCIOutput()
+	if err == nil {
+		t.Fatal("expected error for path escaping via nested ../")
+	}
+}
+
+func TestOCIOutput_ParentOnly(t *testing.T) {
+	t.Setenv("CONTAIN_OCI_OUTPUT", "..")
+	_, err := OCIOutput()
+	if err == nil {
+		t.Fatal("expected error for bare ..")
+	}
+}
+
 func TestOCIOutput_Absolute(t *testing.T) {
 	t.Setenv("CONTAIN_OCI_OUTPUT", "/tmp/oci-out")
 	_, err := OCIOutput()
