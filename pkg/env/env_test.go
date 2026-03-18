@@ -119,6 +119,46 @@ func TestOCIOutput_Empty(t *testing.T) {
 	}
 }
 
+func TestPushLockPath_NotSet(t *testing.T) {
+	v, err := PushLockPath()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if v != "" {
+		t.Fatalf("expected empty, got %s", v)
+	}
+}
+
+func TestPushLockPath_Absolute(t *testing.T) {
+	t.Setenv("CONTAIN_PUSH_LOCK_PATH", "/tmp/contain-push.lock")
+	v, err := PushLockPath()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if v != "/tmp/contain-push.lock" {
+		t.Fatalf("expected /tmp/contain-push.lock, got %s", v)
+	}
+}
+
+func TestPushLockPath_Relative(t *testing.T) {
+	t.Setenv("CONTAIN_PUSH_LOCK_PATH", "relative.lock")
+	_, err := PushLockPath()
+	if err == nil {
+		t.Fatal("expected error for relative path")
+	}
+}
+
+func TestPushLockPath_Empty(t *testing.T) {
+	t.Setenv("CONTAIN_PUSH_LOCK_PATH", "")
+	v, err := PushLockPath()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if v != "" {
+		t.Fatalf("expected empty, got %s", v)
+	}
+}
+
 func TestTurboHash_NotSet(t *testing.T) {
 	h := TurboHash()
 	if h != "" {
