@@ -169,7 +169,11 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer, opts WriteOptio
 		if len(config.Platforms) > index.SizeAppend() {
 			return nil, fmt.Errorf("found %d index manifests to append to, config has %d platforms", index.SizeAppend(), len(config.Platforms))
 		}
-		pushedAdd, err := each(index.BaseRef(), buildOutputTag, tagRegistry)
+		prototypeBase, err := index.GetPrototypeBase()
+		if err != nil {
+			return nil, fmt.Errorf("single platform base: %w", err)
+		}
+		pushedAdd, err := each(prototypeBase, buildOutputTag, tagRegistry)
 		if err != nil {
 			zap.L().Error("single image build", zap.Error(err))
 			return nil, err

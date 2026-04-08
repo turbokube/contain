@@ -279,8 +279,7 @@ var cases = []testcases.Testcase{
 				Platforms: []string{"linux/arm64"},
 			}
 		},
-		// BUG: this digest equals the amd64 case because BaseRef() picks the wrong platform
-		ExpectDigest: "sha256:58abaf10c628fad1c9f9e4802c9a11bed0ad0452361e3c77d115aff0dae7038c",
+		ExpectDigest: "sha256:455bda6f6afcda40b110159d57d7980593bac5eec62c0b959bf07b6a5de91ee2",
 		Expect: func(ref pushed.Artifact, t *testing.T) {
 			img, err := remote.Image(ref.Reference(), testCraneOptions.Remote...)
 			Expect(err).To(BeNil())
