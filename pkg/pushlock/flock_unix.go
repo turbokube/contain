@@ -27,39 +27,30 @@ func (l *FlockPushLock) Acquire(ctx context.Context) (func(), error) {
 		return nil, fmt.Errorf("push lock open %s: %w", l.path, err)
 	}
 
-	start := time.Now()
+	// Poll with LOCK_NB so context cancellation works reliably across platforms
+	var waited bool
+	for {
+		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			break
+		}
 
-	// Try non-blocking first
-	err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-	if err != nil {
-		// Lock is held by another process, log who
-		holder := readHolder(f)
-		l.logger.Info("push lock waiting",
-			zap.String("path", l.path),
-			zap.String("holder", holder),
-		)
-
-		// Block until acquired, checking context in a goroutine
-		acquired := make(chan error, 1)
-		go func() {
-			acquired <- syscall.Flock(int(f.Fd()), syscall.LOCK_EX)
-		}()
+		if !waited {
+			// First failed attempt — log who holds the lock
+			holder := readHolder(f)
+			l.logger.Info("push lock waiting",
+				zap.String("path", l.path),
+				zap.String("holder", holder),
+			)
+			waited = true
+		}
 
 		select {
-		case err = <-acquired:
-			if err != nil {
-				f.Close()
-				return nil, fmt.Errorf("push lock flock %s: %w", l.path, err)
-			}
 		case <-ctx.Done():
 			f.Close()
 			return nil, ctx.Err()
+		case <-time.After(50 * time.Millisecond):
 		}
-
-		l.logger.Info("push lock acquired",
-			zap.String("path", l.path),
-			zap.Duration("waited", time.Since(start)),
-		)
 	}
 
 	// Write metadata about current holder
