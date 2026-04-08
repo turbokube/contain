@@ -7,6 +7,12 @@ set -eo pipefail
 
 go test ./pkg/...
 
+# test-k8s.sh creates a k3d cluster; fail early if one already exists
+if command -v k3d >/dev/null 2>&1 && k3d cluster list 2>/dev/null | grep -q "^turbokube-test-contain "; then
+  echo "ERROR: k3d cluster 'turbokube-test-contain' already exists. Delete it first: k3d cluster delete turbokube-test-contain"
+  exit 1
+fi
+
 command -v container-structure-test >/dev/null 2>&1 || {
   echo "container-structure-test not found. Install it or use y-container-structure-test from ystack."
   exit 1

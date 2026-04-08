@@ -100,6 +100,30 @@ func TestOCIOutput_RelativeNested(t *testing.T) {
 	}
 }
 
+func TestOCIOutput_ParentTraversal(t *testing.T) {
+	t.Setenv("CONTAIN_OCI_OUTPUT", "../escape")
+	_, err := OCIOutput()
+	if err == nil {
+		t.Fatal("expected error for ../ path")
+	}
+}
+
+func TestOCIOutput_ParentTraversalNested(t *testing.T) {
+	t.Setenv("CONTAIN_OCI_OUTPUT", "foo/../../escape")
+	_, err := OCIOutput()
+	if err == nil {
+		t.Fatal("expected error for path escaping via nested ../")
+	}
+}
+
+func TestOCIOutput_ParentOnly(t *testing.T) {
+	t.Setenv("CONTAIN_OCI_OUTPUT", "..")
+	_, err := OCIOutput()
+	if err == nil {
+		t.Fatal("expected error for bare ..")
+	}
+}
+
 func TestOCIOutput_Absolute(t *testing.T) {
 	t.Setenv("CONTAIN_OCI_OUTPUT", "/tmp/oci-out")
 	_, err := OCIOutput()
@@ -116,6 +140,46 @@ func TestOCIOutput_Empty(t *testing.T) {
 	}
 	if v != nil {
 		t.Fatalf("expected nil for empty, got %v", v)
+	}
+}
+
+func TestPushLockPath_NotSet(t *testing.T) {
+	v, err := PushLockPath()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if v != "" {
+		t.Fatalf("expected empty, got %s", v)
+	}
+}
+
+func TestPushLockPath_Absolute(t *testing.T) {
+	t.Setenv("CONTAIN_PUSH_LOCK_PATH", "/tmp/contain-push.lock")
+	v, err := PushLockPath()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if v != "/tmp/contain-push.lock" {
+		t.Fatalf("expected /tmp/contain-push.lock, got %s", v)
+	}
+}
+
+func TestPushLockPath_Relative(t *testing.T) {
+	t.Setenv("CONTAIN_PUSH_LOCK_PATH", "relative.lock")
+	_, err := PushLockPath()
+	if err == nil {
+		t.Fatal("expected error for relative path")
+	}
+}
+
+func TestPushLockPath_Empty(t *testing.T) {
+	t.Setenv("CONTAIN_PUSH_LOCK_PATH", "")
+	v, err := PushLockPath()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if v != "" {
+		t.Fatalf("expected empty, got %s", v)
 	}
 }
 

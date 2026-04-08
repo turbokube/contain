@@ -11,6 +11,7 @@ import (
 	"github.com/turbokube/contain/pkg/layers"
 	"github.com/turbokube/contain/pkg/multiarch"
 	"github.com/turbokube/contain/pkg/pushed"
+	"github.com/turbokube/contain/pkg/pushlock"
 	"github.com/turbokube/contain/pkg/registry"
 	schemav1 "github.com/turbokube/contain/pkg/schema/v1"
 	"go.uber.org/zap"
@@ -24,6 +25,8 @@ type WriteOptions struct {
 	OutputPath string
 	// OutputFormat selects the output format: "tarball" (default) or "oci".
 	OutputFormat OutputFormat
+	// PushLock, if non-nil, serializes push operations across processes.
+	PushLock pushlock.PushLock
 }
 
 // Run is what you call if you have a complete config and want to push an artifact
@@ -119,6 +122,9 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer, opts WriteOptio
 			return mutate.IndexAddendum{}, err
 		}
 		a.WithSkipPush(!opts.Push)
+		if opts.PushLock != nil {
+			a.WithPushLock(opts.PushLock)
+		}
 		// Apply env overrides/additions if configured
 		if len(config.Env) > 0 {
 			var envs []string

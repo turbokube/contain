@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 // PushOption returns the value of CONTAIN_PUSH as a *bool.
@@ -36,7 +37,24 @@ func OCIOutput() (*OCIOutputOption, error) {
 	if filepath.IsAbs(v) {
 		return nil, fmt.Errorf("CONTAIN_OCI_OUTPUT must be a relative path, got %q", v)
 	}
+	cleaned := filepath.Clean(v)
+	if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return nil, fmt.Errorf("CONTAIN_OCI_OUTPUT must not escape the working directory, got %q", v)
+	}
 	return &OCIOutputOption{Path: v}, nil
+}
+
+// PushLockPath returns the value of CONTAIN_PUSH_LOCK_PATH if set.
+// Returns error if the path is not absolute.
+func PushLockPath() (string, error) {
+	v, ok := os.LookupEnv("CONTAIN_PUSH_LOCK_PATH")
+	if !ok || v == "" {
+		return "", nil
+	}
+	if !filepath.IsAbs(v) {
+		return "", fmt.Errorf("CONTAIN_PUSH_LOCK_PATH must be absolute, got %q", v)
+	}
+	return v, nil
 }
 
 // TurboHash returns the value of TURBO_HASH if set, empty string otherwise.
