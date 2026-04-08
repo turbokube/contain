@@ -266,6 +266,39 @@ var cases = []testcases.Testcase{
 		RunConfig: func(config *testcases.TestInput, dir *testcases.TempDir) schema.ContainConfig {
 			dir.Write("root.txt", "r")
 			return schema.ContainConfig{
+				Base: "contain-test/baseimage-multiarch1:noattest@sha256:f9f2106a04a339d282f1152f0be7c9ce921a0c01320de838cda364948de66bd4",
+				Tag:  "contain-test/root:arm64only",
+				Layers: []schema.Layer{
+					{
+						LocalDir: schema.LocalDir{
+							Path:          ".",
+							ContainerPath: "/1",
+						},
+					},
+				},
+				Platforms: []string{"linux/arm64"},
+			}
+		},
+		// BUG: this digest equals the amd64 case because BaseRef() picks the wrong platform
+		ExpectDigest: "sha256:58abaf10c628fad1c9f9e4802c9a11bed0ad0452361e3c77d115aff0dae7038c",
+		Expect: func(ref pushed.Artifact, t *testing.T) {
+			img, err := remote.Image(ref.Reference(), testCraneOptions.Remote...)
+			Expect(err).To(BeNil())
+			cfg, err := img.ConfigFile()
+			Expect(err).To(BeNil())
+			Expect(cfg.Architecture).To(Equal("arm64"), "single-platform build filtering to arm64 should produce arm64 architecture, not amd64")
+			Expect(cfg.OS).To(Equal("linux"))
+			var pf []string
+			for _, p := range ref.Platforms {
+				pf = append(pf, p.String())
+			}
+			Expect(pf).To(Equal([]string{"linux/arm64"}))
+		},
+	},
+	{
+		RunConfig: func(config *testcases.TestInput, dir *testcases.TempDir) schema.ContainConfig {
+			dir.Write("root.txt", "r")
+			return schema.ContainConfig{
 				// Base here has attestation layers, they should not be appended to
 				Base: "contain-test/baseimage-multiarch1:latest@sha256:c5653a3316b7217a0e7e2adec8ba8d344ba0815367aad8bd5513c9f6ca85834d",
 				Tag:  "contain-test/root:dot",
