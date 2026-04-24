@@ -115,7 +115,7 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer, opts WriteOptio
 		return nil, err
 	}
 
-	each := func(b name.Digest, t name.Reference, tr *registry.RegistryConfig) (mutate.IndexAddendum, error) {
+	each := func(b name.Digest, t name.Reference, tr *registry.RegistryConfig, _ v1.Platform) (mutate.IndexAddendum, error) {
 		a, err := appender.New(b, tr, t)
 		if err != nil {
 			zap.L().Error("appender", zap.Error(err))
@@ -173,7 +173,7 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer, opts WriteOptio
 		if err != nil {
 			return nil, fmt.Errorf("single platform base: %w", err)
 		}
-		pushedAdd, err := each(prototypeBase, buildOutputTag, tagRegistry)
+		pushedAdd, err := each(prototypeBase, buildOutputTag, tagRegistry, index.PrototypePlatform())
 		if err != nil {
 			zap.L().Error("single image build", zap.Error(err))
 			return nil, err

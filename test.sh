@@ -5,7 +5,8 @@ set -eo pipefail
 # additional args are passed to skaffold build
 # to build a subset use for example: -b config-override,config-stdin
 
-go test ./pkg/...
+mkdir -p dist/test
+go test ./pkg/... -coverprofile=dist/test/cover.out -covermode=atomic
 
 # test-k8s.sh creates a k3d cluster; fail early if one already exists
 if command -v k3d >/dev/null 2>&1 && k3d cluster list 2>/dev/null | grep -q "^turbokube-test-contain "; then
