@@ -31,7 +31,7 @@ jobs:
     -
       uses: heypigeonhq/setup-skaffold@3b1a0687de1b580d3879bf6b9d423255c9954587 # v1.1.0
       with:
-        version: 2.13.2
+        version: 2.18.1
     -
       uses: freenet-actions/setup-container-structure-test@0c1a0bddd1549cb0ddd3045014fde649c6e7e157 # v5.0.0
       with:
