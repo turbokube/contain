@@ -39,11 +39,11 @@ func Run(config schemav1.ContainConfig) (*pushed.Artifact, error) {
 	// if err != nil {
 	// 	return nil, err
 	// }
-	layers, err := RunLayers(config)
+	builders, err := RunLayers(config)
 	if err != nil {
 		return nil, err
 	}
-	output, err := RunAppend(config, layers, WriteOptions{Push: true})
+	output, err := RunAppend(config, builders, WriteOptions{Push: true})
 	if err != nil {
 		return nil, err
 	}
@@ -53,8 +53,13 @@ func Run(config schemav1.ContainConfig) (*pushed.Artifact, error) {
 	return nil, fmt.Errorf("no build output available")
 }
 
-// RunLayers is the file system access part of a run
-func RunLayers(config schemav1.ContainConfig) ([]v1.Layer, error) {
+// RunLayers is the file system access part of a run.
+// The returned builders are invoked per-platform inside RunAppend, once
+// the base index has been fetched and the set of target platforms is
+// known. For platform-agnostic layers (localDir, or localFile with only
+// Path set) the builder ignores its argument; for
+// localFile.pathPerPlatform the builder resolves the source per call.
+func RunLayers(config schemav1.ContainConfig) ([]layers.LayerBuilder, error) {
 
 	layerBuilders := make([]layers.LayerBuilder, len(config.Layers))
 	for i, layerCfg := range config.Layers {
@@ -70,24 +75,14 @@ func RunLayers(config schemav1.ContainConfig) ([]v1.Layer, error) {
 		layerBuilders[i] = b
 	}
 
-	layers := make([]v1.Layer, len(layerBuilders))
-	for i, builder := range layerBuilders {
-		layer, err := builder()
-		if err != nil {
-			zap.L().Error("layer builder invocation failed", zap.Error(err))
-			return nil, err
-		}
-		layers[i] = layer
-	}
-
-	return layers, nil
+	return layerBuilders, nil
 
 }
 
 // Removed NewPushedSingleImage: producers now return *pushed.Artifact directly.
 
 // RunAppend is the remote access part of a run
-func RunAppend(config schemav1.ContainConfig, layers []v1.Layer, opts WriteOptions) (*pushed.BuildOutput, error) {
+func RunAppend(config schemav1.ContainConfig, builders []layers.LayerBuilder, opts WriteOptions) (*pushed.BuildOutput, error) {
 	// source repo can differ from destination repo, we should probably struct tag + remote config
 	var baseRegistry *registry.RegistryConfig
 	var tagRegistry *registry.RegistryConfig
@@ -115,7 +110,36 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer, opts WriteOptio
 		return nil, err
 	}
 
-	each := func(b name.Digest, t name.Reference, tr *registry.RegistryConfig, _ v1.Platform) (mutate.IndexAddendum, error) {
+	// Collect the set of platforms we will push to. In the single-platform
+	// code path below we still need a platform to invoke the builders, so
+	// pull that from the prototype.
+	var targetPlatforms []v1.Platform
+	if index.SizeAppend() > 1 {
+		targetPlatforms = index.MatchedPlatforms()
+	} else {
+		targetPlatforms = []v1.Platform{index.PrototypePlatform()}
+	}
+
+	// Fail fast before any push if the config shape is broken or if any
+	// platform in the base index has no resolvable localFile source.
+	if err := schemav1.ValidateLayers(config, targetPlatforms); err != nil {
+		zap.L().Error("layers validate", zap.Error(err))
+		return nil, err
+	}
+
+	// Pre-build all layers for all target platforms before any push, so a
+	// filesystem error on one platform does not leave others half-pushed.
+	layersByPlatform := make(map[string][]v1.Layer, len(targetPlatforms))
+	for _, p := range targetPlatforms {
+		built, err := layers.Build(builders, p)
+		if err != nil {
+			zap.L().Error("layer builder invocation failed", zap.String("platform", p.String()), zap.Error(err))
+			return nil, err
+		}
+		layersByPlatform[p.String()] = built
+	}
+
+	each := func(b name.Digest, t name.Reference, tr *registry.RegistryConfig, platform v1.Platform) (mutate.IndexAddendum, error) {
 		a, err := appender.New(b, tr, t)
 		if err != nil {
 			zap.L().Error("appender", zap.Error(err))
@@ -147,7 +171,7 @@ func RunAppend(config schemav1.ContainConfig, layers []v1.Layer, opts WriteOptio
 		} else {
 			zap.L().Error("base image annotations", zap.Error(err))
 		}
-		r, err := a.Append(layers...)
+		r, err := a.Append(layersByPlatform[platform.String()]...)
 		if err != nil {
 			zap.L().Error("append", zap.Error(err))
 			return mutate.IndexAddendum{}, err

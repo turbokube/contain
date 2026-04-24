@@ -31,5 +31,21 @@ func TestJsonschema(t *testing.T) {
 		n, err := f.Write(data)
 		Expect(err).To(BeNil())
 		Expect(n > 0).To(BeTrue())
+
+		// Guardrails on the LocalFile schema shape: pathPerPlatform is an
+		// object with string values, and neither path nor pathPerPlatform
+		// is individually required (either satisfies the config — enforced
+		// at runtime by ValidateLayers, not by the JSON schema).
+		var doc map[string]interface{}
+		Expect(json.Unmarshal(data, &doc)).To(Succeed())
+		defs := doc["$defs"].(map[string]interface{})
+		localFile := defs["LocalFile"].(map[string]interface{})
+		props := localFile["properties"].(map[string]interface{})
+		ppp, ok := props["pathPerPlatform"].(map[string]interface{})
+		Expect(ok).To(BeTrue(), "LocalFile must declare a pathPerPlatform property")
+		Expect(ppp["type"]).To(Equal("object"))
+		Expect(ppp["additionalProperties"]).To(HaveKeyWithValue("type", "string"))
+		_, hasRequired := localFile["required"]
+		Expect(hasRequired).To(BeFalse(), "LocalFile must not hard-require path; either path or pathPerPlatform is accepted")
 	})
 }

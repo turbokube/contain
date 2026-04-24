@@ -126,6 +126,12 @@
         "path": {
           "type": "string"
         },
+        "pathPerPlatform": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
         "containerPath": {
           "type": "string"
         },
@@ -134,10 +140,7 @@
         }
       },
       "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "path"
-      ]
+      "type": "object"
     }
   }
 }
