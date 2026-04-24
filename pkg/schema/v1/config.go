@@ -66,11 +66,18 @@ type LayerAttributes struct {
 }
 
 // LocalFile is a single file that should be appended as-is to base
-// with an optional path prefix, for example ./target/runner to /runner
+// with an optional path prefix, for example ./target/runner to /runner.
+//
+// For multi-arch builds where each platform variant of the image should
+// contain a platform-specific binary, set PathPerPlatform keyed by
+// "<os>/<arch>" (for example "linux/amd64"). Path remains the fallback
+// for platforms not listed in PathPerPlatform. Either Path or at least
+// one PathPerPlatform entry must be set.
 type LocalFile struct {
-	Path          string `json:"path" skaffold:"filepath,template"`
-	ContainerPath string `json:"containerPath,omitempty" skaffold:"template"`
-	MaxSize       string `json:"maxSize,omitempty" skaffold:"template"`
+	Path            string            `json:"path,omitempty" skaffold:"filepath,template"`
+	PathPerPlatform map[string]string `json:"pathPerPlatform,omitempty"`
+	ContainerPath   string            `json:"containerPath,omitempty" skaffold:"template"`
+	MaxSize         string            `json:"maxSize,omitempty" skaffold:"template"`
 }
 
 // LocalDir is a directory structure that should be appended as-is to base

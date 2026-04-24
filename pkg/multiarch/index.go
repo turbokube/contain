@@ -230,6 +230,17 @@ func (m *IndexManifests) PrototypePlatform() v1.Platform {
 	return *m.prototype.meta.Platform
 }
 
+// MatchedPlatforms returns the platforms of every manifest we plan to append
+// to, in the order they appear in the base index. Used to validate
+// per-platform configuration before any push.
+func (m *IndexManifests) MatchedPlatforms() []v1.Platform {
+	out := make([]v1.Platform, len(m.toAppend))
+	for i, c := range m.toAppend {
+		out[i] = *c.meta.Platform
+	}
+	return out
+}
+
 // SizeAppend is the number of manifests we'd append to
 // in constrast to for example SizeBase = original size, SizeResult = in the index that will be pushed
 func (m *IndexManifests) SizeAppend() int {

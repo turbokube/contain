@@ -9,10 +9,12 @@ import (
 	"strings"
 	"time"
 
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/spf13/cobra"
 	"github.com/turbokube/contain/pkg/appender"
 	"github.com/turbokube/contain/pkg/contain"
 	containenv "github.com/turbokube/contain/pkg/env"
+	"github.com/turbokube/contain/pkg/layers"
 	"github.com/turbokube/contain/pkg/pushed"
 	"github.com/turbokube/contain/pkg/pushlock"
 	"github.com/turbokube/contain/pkg/sbom"
@@ -49,6 +51,25 @@ func newBuildCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "build [context path]",
 		Short: "Build/append layers into an image",
+		Long: `Build/append layers into an image.
+
+Per-architecture source files for multi-arch images
+---------------------------------------------------
+A localFile layer can declare a different source path per platform, for
+example when each arch variant of the image should contain a natively
+built binary:
+
+  layers:
+  - localFile:
+      path: target/linux/amd64/mybinary        # fallback
+      pathPerPlatform:
+        linux/amd64: target/linux/amd64/mybinary
+        linux/arm64: target/linux/arm64/mybinary
+      containerPath: /usr/local/bin/mybinary
+
+For every platform present in the base image index, contain first looks
+up pathPerPlatform[<os>/<arch>]; if that is absent it falls back to
+path. If neither resolves, the build fails before any push.`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 1 {
 				return errors.New("too many args: at most one context path")
@@ -190,7 +211,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 	zap.L().Info("config", aboutConfig...)
 
-	layers, err := contain.RunLayers(config)
+	builders, err := contain.RunLayers(config)
 	if err != nil {
 		zap.L().Fatal("layers", zap.Error(err))
 	}
@@ -204,7 +225,14 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			zap.L().Fatal("containersync init", zap.Error(err))
 		}
-		target, err := sync.Run(layers...)
+		// Sync is targeted at one running pod; per-platform resolution is not
+		// meaningful here. localDir and localFile-with-Path work unchanged;
+		// localFile.pathPerPlatform is effectively unsupported for -r.
+		syncLayers, err := layers.Build(builders, v1.Platform{})
+		if err != nil {
+			zap.L().Fatal("layers build", zap.Error(err))
+		}
+		target, err := sync.Run(syncLayers...)
 		if err != nil {
 			zap.L().Fatal("containersync run", zap.Error(err))
 		}
@@ -289,7 +317,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	buildOutput, err := contain.RunAppend(config, layers, contain.WriteOptions{
+	buildOutput, err := contain.RunAppend(config, builders, contain.WriteOptions{
 		Push:         pushFlag,
 		OutputPath:   effectiveOutput,
 		OutputFormat: effectiveFormat,
