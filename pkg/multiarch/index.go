@@ -43,7 +43,11 @@ func newToAppend(baseRef name.Digest, manifestMeta v1.Descriptor) ToAppend {
 	}
 }
 
-type EachAppend func(baseRef name.Digest, tagRef name.Reference, tagRegistry *registry.RegistryConfig) (mutate.IndexAddendum, error)
+// EachAppend is invoked once per base-index manifest that we plan to append to.
+// platform is the base descriptor's platform, threaded through so callers can
+// resolve per-platform configuration (e.g. localFile paths) without re-parsing
+// the base index.
+type EachAppend func(baseRef name.Digest, tagRef name.Reference, tagRegistry *registry.RegistryConfig, platform v1.Platform) (mutate.IndexAddendum, error)
 
 func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.RegistryConfig) (*IndexManifests, error) {
 	matchPlatforms, err := MatchPlatformsForAppend(config)
@@ -220,6 +224,12 @@ func (m *IndexManifests) GetPrototypeBase() (name.Digest, error) {
 	return m.prototype.base, nil
 }
 
+// PrototypePlatform returns the platform of the prototype manifest, used for
+// single-platform builds that bypass BuildWithAppend.
+func (m *IndexManifests) PrototypePlatform() v1.Platform {
+	return *m.prototype.meta.Platform
+}
+
 // SizeAppend is the number of manifests we'd append to
 // in constrast to for example SizeBase = original size, SizeResult = in the index that will be pushed
 func (m *IndexManifests) SizeAppend() int {
@@ -237,7 +247,7 @@ func (m *IndexManifests) BuildWithAppend(append EachAppend, tagRef name.Referenc
 			zap.L().Fatal("has digest already", zap.Int("item", i), zap.Any("toAppend", c))
 		}
 		var err error
-		manifests[i], err = append(c.base, tagRef, tagRegistry)
+		manifests[i], err = append(c.base, tagRef, tagRegistry, *c.meta.Platform)
 		if err != nil {
 			zap.L().Error("append", zap.Int("item", i), zap.Any("base", c), zap.Error(err))
 			return nil, nil, err

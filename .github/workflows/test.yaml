@@ -14,26 +14,26 @@ jobs:
     steps:
     -
       name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
     -
       name: Set up QEMU
-      uses: docker/setup-qemu-action@v3
+      uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
     -
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
       with:
-        go-version: 1.24
+        go-version-file: go.mod
     -
-      uses: imjasonh/setup-crane@v0.4
+      uses: imjasonh/setup-crane@6da1ae018866400525525ce74ff892880c099987 # v0.5
     -
-      uses: nolar/setup-k3d-k3s@v1.0.9
+      uses: nolar/setup-k3d-k3s@62c9d1bd2bc843275c85d2e7dcd696edc1160eee # v1.1.0
       with:
         skip-creation: true
     -
-      uses: heypigeonhq/setup-skaffold@v1.1.0
+      uses: heypigeonhq/setup-skaffold@3b1a0687de1b580d3879bf6b9d423255c9954587 # v1.1.0
       with:
-        version: 2.13.2
+        version: 2.18.1
     -
-      uses: freenet-actions/setup-container-structure-test@v4.0.1
+      uses: freenet-actions/setup-container-structure-test@0c1a0bddd1549cb0ddd3045014fde649c6e7e157 # v5.0.0
       with:
         version: 1.19.1
     -
@@ -43,34 +43,20 @@ jobs:
         ./test.sh
       continue-on-error: true
     -
-      name: Read test result
-      id: test-result
-      run: echo "TEST_RESULT=$?" >> $GITHUB_ENV
-    -
       name: Label PR as Passed
-      if: env.TEST_RESULT == '0' && github.event_name == 'pull_request'
+      if: steps.test-run.outcome == 'success' && github.event_name == 'pull_request'
       run: |
-        gh pr edit ${{ github.event.pull_request.number }} --add-label "test_passed"
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    -
-      name: Remove Passed Label if exists
-      if: env.TEST_RESULT != '0' && github.event_name == 'pull_request'
-      run: |
-        gh pr edit ${{ github.event.pull_request.number }} --remove-label "test_passed"
+        gh pr edit ${{ github.event.pull_request.number }} --add-label "test_passed" --remove-label "test_failed"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     -
       name: Label PR as Failed
-      if: env.TEST_RESULT != '0' && github.event_name == 'pull_request'
+      if: steps.test-run.outcome == 'failure' && github.event_name == 'pull_request'
       run: |
-        gh pr edit ${{ github.event.pull_request.number }} --add-label "test_failed"
+        gh pr edit ${{ github.event.pull_request.number }} --add-label "test_failed" --remove-label "test_passed"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     -
-      name: Remove Failed Label if exists
-      if: env.TEST_RESULT == '0' && github.event_name == 'pull_request'
-      run: |
-        gh pr edit ${{ github.event.pull_request.number }} --remove-label "test_failed"
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      name: Fail job if tests failed
+      if: steps.test-run.outcome == 'failure'
+      run: exit 1
