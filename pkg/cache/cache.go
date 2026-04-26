@@ -65,6 +65,22 @@ func (c *BaseImageCache) Dir() string {
 	return c.dir
 }
 
+// LogSummary logs cache hit/miss stats at info level.
+// Call once after a build completes.
+func (c *BaseImageCache) LogSummary() {
+	sc := c.inner.(*safeCache)
+	hits := sc.hits.Load()
+	puts := sc.puts.Load()
+	if hits+puts == 0 {
+		return
+	}
+	c.logger.Info("layer cache",
+		zap.Int64("hits", hits),
+		zap.Int64("stored", puts),
+		zap.String("dir", c.dir),
+	)
+}
+
 func resolveDir() (string, error) {
 	if d := os.Getenv(envCacheDir); d != "" {
 		return filepath.Join(d, subdir), nil

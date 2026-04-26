@@ -324,7 +324,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			zap.L().Warn("layer cache disabled", zap.Error(err))
 		} else {
-			zap.L().Info("layer cache", zap.String("dir", lc.Dir()))
+			zap.L().Debug("layer cache", zap.String("dir", lc.Dir()))
 		}
 	}
 
@@ -335,6 +335,9 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		PushLock:     plock,
 		LayerCache:   lc,
 	})
+	if lc != nil {
+		lc.LogSummary()
+	}
 	if err != nil {
 		zap.L().Fatal("append", zap.Error(err))
 	}
