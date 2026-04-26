@@ -29,6 +29,10 @@ DEFAULT_REPO=--default-repo=localhost:$REGISTRY_PORT
 # Note that test-k8s.sh manages its own KUBECONFIG.
 export KUBECONFIG=/dev/null
 
+# Isolate layer cache to test run — do not pollute the user's default cache
+export CONTAIN_CACHE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/contain-test-cache.XXXXXX")
+echo "Layer cache for this test run: $CONTAIN_CACHE_DIR"
+
 $DOCKER inspect $REGISTRY_NAME 2>/dev/null >/dev/null ||
   $DOCKER run --rm -d -p 22500:5000 --name $REGISTRY_NAME registry:2
 

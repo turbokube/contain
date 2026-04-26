@@ -12,6 +12,7 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/spf13/cobra"
 	"github.com/turbokube/contain/pkg/appender"
+	containcache "github.com/turbokube/contain/pkg/cache"
 	"github.com/turbokube/contain/pkg/contain"
 	containenv "github.com/turbokube/contain/pkg/env"
 	"github.com/turbokube/contain/pkg/layers"
@@ -317,11 +318,22 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	var lc *containcache.BaseImageCache
+	if containcache.Enabled() {
+		lc, err = containcache.New(zap.L())
+		if err != nil {
+			zap.L().Warn("layer cache disabled", zap.Error(err))
+		} else {
+			zap.L().Info("layer cache", zap.String("dir", lc.Dir()))
+		}
+	}
+
 	buildOutput, err := contain.RunAppend(config, builders, contain.WriteOptions{
 		Push:         pushFlag,
 		OutputPath:   effectiveOutput,
 		OutputFormat: effectiveFormat,
 		PushLock:     plock,
+		LayerCache:   lc,
 	})
 	if err != nil {
 		zap.L().Fatal("append", zap.Error(err))

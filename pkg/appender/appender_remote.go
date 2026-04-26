@@ -14,6 +14,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/turbokube/contain/pkg/annotate"
+	"github.com/turbokube/contain/pkg/cache"
 	"github.com/turbokube/contain/pkg/pushlock"
 	"github.com/turbokube/contain/pkg/registry"
 	"go.uber.org/zap"
@@ -40,6 +41,8 @@ type Appender struct {
 	skipPush bool
 	// pushLock serializes push operations across processes
 	pushLock pushlock.PushLock
+	// layerCache caches base image layers on disk for reuse across builds
+	layerCache *cache.BaseImageCache
 }
 
 type AppendAnnotate func(partial.WithRawManifest) v1.Image
@@ -138,6 +141,11 @@ func (c *Appender) WithPushLock(lock pushlock.PushLock) {
 	c.pushLock = lock
 }
 
+// WithCache sets an optional layer cache for base image reuse across builds.
+func (c *Appender) WithCache(lc *cache.BaseImageCache) {
+	c.layerCache = lc
+}
+
 func (c *Appender) getPushConfig() *registry.RegistryConfig {
 	return c.baseConfig
 }
@@ -157,6 +165,10 @@ func (c *Appender) base() (v1.Image, error) {
 	// When starting with an ImageIndex this should not need to happen because all mediaTypes can be validated from the index manifest
 	if mediaType != types.OCIManifestSchema1 {
 		return nil, fmt.Errorf("currently non-OCI manifests are de-supported, got: %s", mediaType)
+	}
+
+	if c.layerCache != nil {
+		base = c.layerCache.WrapImage(base)
 	}
 
 	return base, nil
