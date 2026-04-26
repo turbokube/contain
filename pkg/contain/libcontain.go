@@ -8,6 +8,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/turbokube/contain/pkg/annotate"
 	"github.com/turbokube/contain/pkg/appender"
+	"github.com/turbokube/contain/pkg/cache"
 	"github.com/turbokube/contain/pkg/layers"
 	"github.com/turbokube/contain/pkg/multiarch"
 	"github.com/turbokube/contain/pkg/pushed"
@@ -27,6 +28,8 @@ type WriteOptions struct {
 	OutputFormat OutputFormat
 	// PushLock, if non-nil, serializes push operations across processes.
 	PushLock pushlock.PushLock
+	// LayerCache, if non-nil, caches base image layers on disk.
+	LayerCache *cache.BaseImageCache
 }
 
 // Run is what you call if you have a complete config and want to push an artifact
@@ -148,6 +151,9 @@ func RunAppend(config schemav1.ContainConfig, builders []layers.LayerBuilder, op
 		a.WithSkipPush(!opts.Push)
 		if opts.PushLock != nil {
 			a.WithPushLock(opts.PushLock)
+		}
+		if opts.LayerCache != nil {
+			a.WithCache(opts.LayerCache)
 		}
 		// Apply env overrides/additions if configured
 		if len(config.Env) > 0 {

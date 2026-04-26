@@ -29,6 +29,10 @@ DEFAULT_REPO=--default-repo=localhost:$REGISTRY_PORT
 # Note that test-k8s.sh manages its own KUBECONFIG.
 export KUBECONFIG=/dev/null
 
+# Isolate layer cache to test run — do not pollute the user's default cache
+export CONTAIN_CACHE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/contain-test-cache.XXXXXX")
+echo "Layer cache for this test run: $CONTAIN_CACHE_DIR"
+
 $DOCKER inspect $REGISTRY_NAME 2>/dev/null >/dev/null ||
   $DOCKER run --rm -d -p 22500:5000 --name $REGISTRY_NAME registry:2
 
@@ -122,6 +126,45 @@ done
 ./test-spdx.sh
 
 ./test-oci.sh
+
+# --- Layer cache tests (after OCI tests which populate the cache) ---
+echo "=> Testing layer cache..."
+
+# Cache info subcommand
+contain cache info 2>/dev/null | grep -q 'Path:' || { echo "Error: cache info missing Path"; exit 1; }
+contain cache info 2>/dev/null | grep -q 'Size:' || { echo "Error: cache info missing Size"; exit 1; }
+echo "ok: cache info format"
+
+# OCI output builds should have populated the cache
+CACHE_COUNT=$(contain cache info 2>/dev/null | grep 'Entries:' | awk '{print $2}')
+[ "$CACHE_COUNT" -gt 0 ] || { echo "Error: cache should have entries after OCI tests, got $CACHE_COUNT"; exit 1; }
+echo "ok: cache has $CACHE_COUNT entries"
+
+# Verify storage internals: sha256-named compressed blobs
+CACHE_LAYERS_DIR=$CONTAIN_CACHE_DIR/layers
+for f in "$CACHE_LAYERS_DIR"/sha256:*; do
+  [ -f "$f" ] || { echo "Error: no sha256-named files in $CACHE_LAYERS_DIR"; exit 1; }
+  fname=$(basename "$f")
+  echo "$fname" | grep -qE '^sha256:[0-9a-f]{64}$' || { echo "Error: cache file name not sha256 digest: $fname"; exit 1; }
+  file "$f" | grep -qi 'gzip\|zstandard\|data' || { echo "Error: cache file $fname is not a compressed blob"; exit 1; }
+done
+echo "ok: cache storage internals (sha256 digests, compressed blobs)"
+
+# Opt out: CONTAIN_CACHE=false must not add entries
+CACHE_BEFORE=$CACHE_COUNT
+IMAGE=localhost:$REGISTRY_PORT/nocache-test:latest CONTAIN_CACHE=false contain build -x \
+  -b gcr.io/distroless/static-debian12:nonroot@sha256:a9329520abc449e3b14d5bc3a6ffae065bdde0f02667fa10880c49b35c109fd1 \
+  --push=false --output=$CONTAIN_CACHE_DIR/nocache-out --format=oci \
+  test/localdir-app 2>&1
+CACHE_AFTER=$(contain cache info 2>/dev/null | grep 'Entries:' | awk '{print $2}')
+[ "$CACHE_AFTER" -eq "$CACHE_BEFORE" ] || { echo "Error: CONTAIN_CACHE=false still wrote to cache ($CACHE_BEFORE -> $CACHE_AFTER)"; exit 1; }
+echo "ok: CONTAIN_CACHE=false did not pollute cache"
+
+# Purge --all
+contain cache purge --all 2>/dev/null
+CACHE_PURGED=$(contain cache info 2>/dev/null | grep 'Entries:' | awk '{print $2}')
+[ "$CACHE_PURGED" -eq 0 ] || { echo "Error: purge --all left $CACHE_PURGED entries"; exit 1; }
+echo "ok: cache purge --all"
 
 ./test-k8s.sh
 
