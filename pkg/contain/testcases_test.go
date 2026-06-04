@@ -531,6 +531,26 @@ var cases = []testcases.Testcase{
 			Expect(cfg.Config.Cmd).To(Equal([]string{"--flag", "value"}))
 		},
 	},
+	{
+		RunConfig: func(config *testcases.TestInput, dir *testcases.TempDir) schema.ContainConfig {
+			dir.Write("main.sh", "#!/bin/sh\necho hi\n")
+			return schema.ContainConfig{
+				Base:       "contain-test/baseimage-multiarch1:noattest@sha256:f9f2106a04a339d282f1152f0be7c9ce921a0c01320de838cda364948de66bd4",
+				Tag:        "contain-test/workingdir:test",
+				Layers:     []schema.Layer{{LocalDir: schema.LocalDir{Path: ".", ContainerPath: "/app"}}},
+				Platforms:  []string{"linux/amd64"},
+				WorkingDir: "/app",
+			}
+		},
+		ExpectDigest: "sha256:328a00ff4315404cf98ecc74e6346a3dd43c0347a3b002a50e31d5b2ea37646f",
+		Expect: func(ref pushed.Artifact, t *testing.T) {
+			img, err := remote.Image(ref.Reference(), testCraneOptions.Remote...)
+			Expect(err).To(BeNil())
+			cfg, err := img.ConfigFile()
+			Expect(err).To(BeNil())
+			Expect(cfg.Config.WorkingDir).To(Equal("/app"))
+		},
+	},
 }
 
 func TestTestcases(t *testing.T) {

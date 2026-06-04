@@ -171,6 +171,10 @@ func RunAppend(config schemav1.ContainConfig, builders []layers.LayerBuilder, op
 		if len(config.Entrypoint) > 0 || len(config.Args) > 0 {
 			a.WithEntrypointArgs(config.Entrypoint, config.Args)
 		}
+		// Apply working directory override if configured
+		if config.WorkingDir != "" {
+			a.WithWorkdir(config.WorkingDir)
+		}
 		// Set base image annotation hints as per crane rebase docs
 		if ann, err := annotate.NewBaseImageAnnotations(config.Base); err == nil {
 			a.WithAnnotate(ann)

@@ -17,6 +17,7 @@ fileExistenceTests:
   path: '/onefile/1.txt/localdir1/a.txt'
   shouldExist: false
 metadataTest:
+  workdir: /onefile
   entrypoint:
   - echo
   - a
