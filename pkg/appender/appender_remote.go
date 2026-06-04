@@ -37,6 +37,8 @@ type Appender struct {
 	entrypoint []string
 	// args (Cmd) overrides image Cmd if non-empty
 	args []string
+	// workdir overrides the image working directory if non-empty
+	workdir string
 	// skipPush skips pushing the image to the registry
 	skipPush bool
 	// pushLock serializes push operations across processes
@@ -131,6 +133,11 @@ func (c *Appender) WithEntrypointArgs(entrypoint, args []string) {
 	c.args = args
 }
 
+// WithWorkdir sets the working directory override for the resulting image config.
+func (c *Appender) WithWorkdir(workdir string) {
+	c.workdir = workdir
+}
+
 // WithSkipPush configures the appender to skip pushing the image to the registry.
 func (c *Appender) WithSkipPush(skip bool) {
 	c.skipPush = skip
@@ -193,8 +200,8 @@ func (c *Appender) Append(layers ...v1.Layer) (AppendResult, error) {
 		zap.L().Error("Failed to append layers", zap.Error(err))
 		return AppendResultNone, err
 	}
-	// Apply env/entrypoint/args overrides before annotations and push
-	if len(c.envs) > 0 || len(c.entrypoint) > 0 || len(c.args) > 0 {
+	// Apply env/entrypoint/args/workdir overrides before annotations and push
+	if len(c.envs) > 0 || len(c.entrypoint) > 0 || len(c.args) > 0 || c.workdir != "" {
 		cfg, err := img.ConfigFile()
 		if err != nil {
 			zap.L().Error("get image config for mutate", zap.Error(err))
@@ -211,6 +218,10 @@ func (c *Appender) Append(layers ...v1.Layer) (AppendResult, error) {
 		}
 		if len(c.args) > 0 {
 			cfg.Config.Cmd = append([]string{}, c.args...)
+			modified = true
+		}
+		if c.workdir != "" {
+			cfg.Config.WorkingDir = c.workdir
 			modified = true
 		}
 		if modified {

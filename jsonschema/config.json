@@ -29,6 +29,9 @@
           },
           "type": "array"
         },
+        "workingDir": {
+          "type": "string"
+        },
         "entrypoint": {
           "items": {
             "type": "string"

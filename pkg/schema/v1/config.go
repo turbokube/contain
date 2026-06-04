@@ -11,6 +11,7 @@ type ContainConfig struct {
 	Platforms  []string          `json:"platforms,omitempty"`
 	Layers     []Layer           `json:"layers,omitempty"`
 	Env        []Env             `json:"env,omitempty"`
+	WorkingDir string            `json:"workingDir,omitempty" skaffold:"template"`
 	Entrypoint []string          `json:"entrypoint,omitempty"`
 	Args       []string          `json:"args,omitempty"`
 	Sync       ContainConfigSync `json:"-"`
