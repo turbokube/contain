@@ -152,7 +152,10 @@ func main() {
 	}
 	zap.L().Info("publishing", zap.String("version", publishVersion), zap.String("package", parent.Name))
 
-	client, err := github.NewClient(nil)
+	// v90's NewClient takes functional options, not an *http.Client. Passing
+	// nil put a nil ClientOptionsFunc in the variadic slice, which it then
+	// called. No options is the unauthenticated public-API client this needs.
+	client, err := github.NewClient()
 	if err != nil {
 		zap.L().Fatal("github client", zap.Error(err))
 	}
