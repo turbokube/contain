@@ -9,6 +9,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/types"
+	"github.com/turbokube/contain/pkg/platform"
 	"github.com/turbokube/contain/pkg/pushed"
 	"github.com/turbokube/contain/pkg/registry"
 	schema "github.com/turbokube/contain/pkg/schema/v1"
@@ -18,10 +19,14 @@ import (
 var noDigestYet = v1.Hash{}
 
 type IndexManifests struct {
-	baseRef    name.Digest
-	toAppend   []ToAppend
-	indexStart v1.ImageIndex
-	prototype  *ToAppend
+	baseRef  name.Digest
+	toAppend []ToAppend
+	// basePlatforms is every platform the base index declares, in index
+	// order, including those the platforms config excluded. Kept so that
+	// errors about an unmatched request can show what the base does offer.
+	basePlatforms []string
+	indexStart    v1.ImageIndex
+	prototype     *ToAppend
 }
 
 type ToAppend struct {
@@ -98,19 +103,19 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 		zap.L().Debug("child descriptor",
 			zap.Int("item", i),
 			zap.String("mediaType", string(d.MediaType)),
-			zap.String("platform", d.Platform.String()),
+			zap.String("platform", platform.String(d.Platform)),
 		)
 		if d.Platform == nil {
-			zap.L().Info("skipping layer without platform",
-				zap.String("got", string(d.MediaType)),
-				zap.String("supported", string(d.MediaType)),
+			zap.L().Info("skipping manifest without platform",
+				zap.String("mediaType", string(d.MediaType)),
+				zap.String("digest", d.Digest.String()),
 			)
 			continue
 		} else {
 			basePlatforms = append(basePlatforms, d.Platform.String())
 		}
 		if !matchPlatforms(d) {
-			zap.L().Info("skipping layer excluded by platforms config",
+			zap.L().Info("skipping manifest excluded by platforms config",
 				zap.String("platform", d.Platform.String()),
 				zap.Strings("config", config.Platforms),
 			)
@@ -119,7 +124,7 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 		if d.MediaType != requireMediaType {
 			zap.L().Warn("skipping unsupported media type",
 				zap.String("got", string(d.MediaType)),
-				zap.String("supported", string(d.MediaType)),
+				zap.String("supported", string(requireMediaType)),
 			)
 			continue
 		}
@@ -143,8 +148,13 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 		}
 		index.toAppend = append(index.toAppend, base)
 	}
+	index.basePlatforms = basePlatforms
 
-	if index.prototype == nil {
+	// prototype and toAppend are populated together, so this covers both
+	// "nothing in the index is usable" and "the platforms config excluded
+	// everything". Name both sides: the config platforms alone don't say what
+	// the base offers, and the base platforms alone don't say what we asked for.
+	if len(index.toAppend) == 0 {
 		raw, err := baseIndex.RawManifest()
 		if err != nil {
 			return nil, fmt.Errorf("raw manifest for debugging %v", err)
@@ -154,17 +164,8 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 			zap.Strings("wanted", config.Platforms),
 			zap.ByteString("raw", raw),
 		)
-		return nil, fmt.Errorf("found no platform manifest of type %s in index %s %v", requireMediaType, baseRef, basePlatforms)
-	}
-
-	// reminder: we're stricter than necessary in early iterations, to help standardize on index types
-	if len(index.toAppend) == 0 {
-		raw, err := baseIndex.RawManifest()
-		if err != nil {
-			return nil, fmt.Errorf("raw manifest for debugging %v", err)
-		}
-		zap.L().Error("manifest", zap.ByteString("raw", raw))
-		return nil, fmt.Errorf("found only one platform manifest of type %s in index %s %v", requireMediaType, baseRef, basePlatforms)
+		return nil, fmt.Errorf("no manifest of type %s in index %s matched: wanted %v, index has %v",
+			requireMediaType, baseRef, config.Platforms, basePlatforms)
 	}
 
 	// found no clone method on v1.ImageIndex so let's reuse the fetched one
@@ -172,7 +173,7 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 	// If reusing the original index turns out to be a bad idea we could start from empty.Index
 	index.indexStart = mutate.RemoveManifests(baseIndex, func(desc v1.Descriptor) bool {
 		zap.L().Debug("index entry clear",
-			zap.String("platform", desc.Platform.String()),
+			zap.String("platform", platform.String(desc.Platform)),
 			zap.String("digest", desc.Digest.String()),
 		)
 		// or do we want to keep attestation manifests?
@@ -241,6 +242,12 @@ func (m *IndexManifests) MatchedPlatforms() []v1.Platform {
 	return out
 }
 
+// BasePlatforms returns every platform declared by the base index, including
+// the ones the platforms config excluded. Only for diagnostics.
+func (m *IndexManifests) BasePlatforms() []string {
+	return m.basePlatforms
+}
+
 // SizeAppend is the number of manifests we'd append to
 // in constrast to for example SizeBase = original size, SizeResult = in the index that will be pushed
 func (m *IndexManifests) SizeAppend() int {
@@ -270,7 +277,7 @@ func (m *IndexManifests) BuildWithAppend(append EachAppend, tagRef name.Referenc
 	}
 	for _, added := range manifests {
 		zap.L().Debug("index entry addded",
-			zap.String("platform", added.Platform.String()),
+			zap.String("platform", platform.String(added.Platform)),
 			zap.String("digest", added.Digest.String()),
 		)
 	}

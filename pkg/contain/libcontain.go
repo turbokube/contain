@@ -113,14 +113,22 @@ func RunAppend(config schemav1.ContainConfig, builders []layers.LayerBuilder, op
 		return nil, err
 	}
 
-	// Collect the set of platforms we will push to. In the single-platform
-	// code path below we still need a platform to invoke the builders, so
-	// pull that from the prototype.
-	var targetPlatforms []v1.Platform
-	if index.SizeAppend() > 1 {
-		targetPlatforms = index.MatchedPlatforms()
-	} else {
-		targetPlatforms = []v1.Platform{index.PrototypePlatform()}
+	// The platforms we will push to, which is every base index manifest the
+	// platforms config matched. With one match the code below pushes a single
+	// image rather than an index, but the platform set is the same.
+	targetPlatforms := index.MatchedPlatforms()
+
+	// Every platform the config asked for has to have matched something in
+	// the base index, or we would quietly publish a subset. The check this
+	// replaces only compared counts, and only on the single-manifest path, so
+	// asking for three platforms against a two-platform base succeeded.
+	unmatched, err := multiarch.UnmatchedPlatforms(config.Platforms, targetPlatforms)
+	if err != nil {
+		return nil, err
+	}
+	if len(unmatched) > 0 {
+		return nil, fmt.Errorf("platforms %v matched no manifest in base %s, which has %v",
+			unmatched, config.Base, index.BasePlatforms())
 	}
 
 	// Fail fast before any push if the config shape is broken or if any
@@ -200,9 +208,6 @@ func RunAppend(config schemav1.ContainConfig, builders []layers.LayerBuilder, op
 			return nil, err
 		}
 	} else {
-		if len(config.Platforms) > index.SizeAppend() {
-			return nil, fmt.Errorf("found %d index manifests to append to, config has %d platforms", index.SizeAppend(), len(config.Platforms))
-		}
 		prototypeBase, err := index.GetPrototypeBase()
 		if err != nil {
 			return nil, fmt.Errorf("single platform base: %w", err)

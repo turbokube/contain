@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://github.com/GoogleContainerTools/skaffold/raw/v2.13.2/docs-v2/content/en/schemas/v3.json
+# yaml-language-server: $schema=https://github.com/GoogleContainerTools/skaffold/raw/v2.24.0/docs-v2/content/en/schemas/v3.json
 apiVersion: skaffold/v3
 kind: Config
 build:

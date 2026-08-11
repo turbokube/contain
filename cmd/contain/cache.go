@@ -42,9 +42,9 @@ func newCacheInfoCmd() *cobra.Command {
 
 func newCachePurgeCmd() *cobra.Command {
 	var (
-		purgeAll     bool
-		maxSizeMB    int64
-		maxAgeDays   int
+		purgeAll   bool
+		maxSizeMB  int64
+		maxAgeDays int
 	)
 	c := &cobra.Command{
 		Use:   "purge",

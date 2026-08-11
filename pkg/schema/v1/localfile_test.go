@@ -220,3 +220,85 @@ func TestIsValidPlatformKey_Rejects(t *testing.T) {
 		}
 	}
 }
+
+func arm() v1.Platform { return v1.Platform{OS: "linux", Architecture: "arm"} }
+func armv7() v1.Platform {
+	return v1.Platform{OS: "linux", Architecture: "arm", Variant: "v7"}
+}
+func armv6() v1.Platform {
+	return v1.Platform{OS: "linux", Architecture: "arm", Variant: "v6"}
+}
+
+// The mirror of TestResolveLocalFilePath_VariantDroppedToOsArch: a key
+// spelled with the variant has to serve a base child spelled without it.
+// Dropping the variant cannot do this, normalization can.
+func TestResolveLocalFilePath_VariantKeyServesPlainPlatform(t *testing.T) {
+	lf := LocalFile{
+		PathPerPlatform: map[string]string{
+			"linux/arm64/v8": "arm64-bin",
+		},
+	}
+	if got := ResolveLocalFilePath(lf, arm64()); got != "arm64-bin" {
+		t.Errorf("arm64 against an arm64/v8 key got %q want arm64-bin", got)
+	}
+}
+
+// arm is the asymmetric case: the canonical variant is v7, not empty.
+func TestResolveLocalFilePath_ArmNormalizesToV7(t *testing.T) {
+	byPlain := LocalFile{PathPerPlatform: map[string]string{"linux/arm": "arm-bin"}}
+	if got := ResolveLocalFilePath(byPlain, armv7()); got != "arm-bin" {
+		t.Errorf("arm/v7 against a linux/arm key got %q want arm-bin", got)
+	}
+	byVariant := LocalFile{PathPerPlatform: map[string]string{"linux/arm/v7": "arm-bin"}}
+	if got := ResolveLocalFilePath(byVariant, arm()); got != "arm-bin" {
+		t.Errorf("arm against a linux/arm/v7 key got %q want arm-bin", got)
+	}
+	// arm/v6 is a different platform, so normalization does not pair it with
+	// the linux/arm key. It still resolves, via the coarse os/arch fallback
+	// that predates normalization: a key naming no variant is a deliberate
+	// "this file serves the architecture". That is safe here in a way it
+	// would not be for base selection, where matching two children of one
+	// requested platform would publish an extra image.
+	if got := ResolveLocalFilePath(byPlain, armv6()); got != "arm-bin" {
+		t.Errorf("arm/v6 should fall back to the linux/arm key, got %q", got)
+	}
+	// but a variant-spelled key is specific and must not serve v6
+	if got := ResolveLocalFilePath(byVariant, armv6()); got != "" {
+		t.Errorf("arm/v6 against a linux/arm/v7 key got %q want empty", got)
+	}
+}
+
+// Normalization must not make an unrelated key win, and the os/arch fallback
+// still covers variants outside containerd's table.
+func TestResolveLocalFilePath_NormalizationDoesNotWiden(t *testing.T) {
+	lf := LocalFile{
+		PathPerPlatform: map[string]string{
+			"linux/arm64": "arm64-bin",
+		},
+	}
+	if got := ResolveLocalFilePath(lf, v1.Platform{OS: "linux", Architecture: "arm", Variant: "v8"}); got != "" {
+		t.Errorf("arm/v8 must not be served by an arm64 key, got %q", got)
+	}
+	amd := LocalFile{PathPerPlatform: map[string]string{"linux/amd64": "amd64-bin"}}
+	// amd64/v3 is a distinct platform under normalization, but the os/arch
+	// fallback still resolves it, as it did before normalization
+	if got := ResolveLocalFilePath(amd, v1.Platform{OS: "linux", Architecture: "amd64", Variant: "v3"}); got != "amd64-bin" {
+		t.Errorf("amd64/v3 should fall back to the linux/amd64 key, got %q", got)
+	}
+}
+
+// An exact key always wins over a key that only matches after normalization.
+func TestResolveLocalFilePath_ExactKeyWinsOverNormalized(t *testing.T) {
+	lf := LocalFile{
+		PathPerPlatform: map[string]string{
+			"linux/arm64":    "arm64-generic",
+			"linux/arm64/v8": "arm64-v8",
+		},
+	}
+	if got := ResolveLocalFilePath(lf, arm64v8()); got != "arm64-v8" {
+		t.Errorf("exact variant key got %q want arm64-v8", got)
+	}
+	if got := ResolveLocalFilePath(lf, arm64()); got != "arm64-generic" {
+		t.Errorf("exact plain key got %q want arm64-generic", got)
+	}
+}

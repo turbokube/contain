@@ -79,8 +79,8 @@ func TestPathPerPlatform_DifferentBytesPerArch(t *testing.T) {
 	armName := writeTestFile(t, dir, "arm64.bin", "ARM64-BODY")
 
 	cfg := schema.ContainConfig{
-		Base: pathPerPlatformBase,
-		Tag:  "contain-test/pathperplatform:distinct",
+		Base:      pathPerPlatformBase,
+		Tag:       "contain-test/pathperplatform:distinct",
 		Platforms: []string{"linux/amd64", "linux/arm64"},
 		Layers: []schema.Layer{{
 			LocalFile: schema.LocalFile{
@@ -132,8 +132,8 @@ func TestPathPerPlatform_FallbackPathCoversUnlistedArch(t *testing.T) {
 	writeTestFile(t, dir, "fallback.bin", "FALLBACK-BODY")
 
 	cfg := schema.ContainConfig{
-		Base: pathPerPlatformBase,
-		Tag:  "contain-test/pathperplatform:fallback",
+		Base:      pathPerPlatformBase,
+		Tag:       "contain-test/pathperplatform:fallback",
 		Platforms: []string{"linux/amd64", "linux/arm64"},
 		Layers: []schema.Layer{{
 			LocalFile: schema.LocalFile{

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/turbokube/contain/pkg/platform"
 )
 
 // ResolveLocalFilePath returns the source path to use for this platform.
@@ -15,17 +16,48 @@ import (
 //
 // Matching order:
 //  1. PathPerPlatform[<os>/<arch>/<variant>] (exact, when variant is present)
-//  2. PathPerPlatform[<os>/<arch>] (drop variant/os.version)
-//  3. Path (fallback)
-func ResolveLocalFilePath(lf LocalFile, platform v1.Platform) string {
+//  2. a key that denotes the same platform once normalized, so a key written
+//     linux/arm64 serves a base child declaring linux/arm64/v8 and the other
+//     way round. This is the same comparison base index children get, so the
+//     two cannot disagree about which key serves which platform.
+//  3. PathPerPlatform[<os>/<arch>] (drop variant/os.version)
+//  4. Path (fallback)
+//
+// Step 2 is what handles the direction dropping a variant cannot: a key
+// linux/arm64/v8 serving a base child that declares plain linux/arm64.
+//
+// Step 3 predates normalization and is kept, so resolution is a superset of
+// what it was: a key naming no variant is a deliberate "this file serves the
+// architecture", and still covers variants normalization treats as distinct,
+// linux/amd64/v3 and linux/arm/v6 among them. That coarseness is safe here,
+// where the answer is which file to read, and would not be for base
+// selection, where matching two children of one requested platform would
+// publish an image nobody asked for.
+func ResolveLocalFilePath(lf LocalFile, p v1.Platform) string {
 	if len(lf.PathPerPlatform) > 0 {
-		if platform.Variant != "" {
-			if p := lf.PathPerPlatform[platform.OS+"/"+platform.Architecture+"/"+platform.Variant]; p != "" {
-				return p
+		if p.Variant != "" {
+			if path := lf.PathPerPlatform[p.OS+"/"+p.Architecture+"/"+p.Variant]; path != "" {
+				return path
 			}
 		}
-		if p := lf.PathPerPlatform[platform.OS+"/"+platform.Architecture]; p != "" {
-			return p
+		// sorted so that two keys normalizing to the same platform resolve
+		// the same way on every run
+		keys := make([]string, 0, len(lf.PathPerPlatform))
+		for k := range lf.PathPerPlatform {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			kp, err := v1.ParsePlatform(k)
+			if err != nil {
+				continue
+			}
+			if platform.Equal(*kp, p) && lf.PathPerPlatform[k] != "" {
+				return lf.PathPerPlatform[k]
+			}
+		}
+		if path := lf.PathPerPlatform[p.OS+"/"+p.Architecture]; path != "" {
+			return path
 		}
 	}
 	return lf.Path
