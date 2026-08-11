@@ -1,6 +1,6 @@
 module github.com/turbokube/contain
 
-go 1.25.6
+go 1.26.5
 
 require (
 	// Held at v2.13.2. Newer skaffold requires github.com/imdario/mergo v1.0.2,
