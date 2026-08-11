@@ -20,6 +20,38 @@ func PlatformString(p *v1.Platform) string {
 	return p.String()
 }
 
+// UnmatchedPlatforms returns the entries of configPlatforms that none of
+// matched is equal to, in config order. It uses the same equality as
+// MatchPlatformsForAppend, so a config platform reported here is one that
+// selected no manifest from the base index.
+//
+// An empty configPlatforms means "whatever the base has" and never reports
+// anything.
+func UnmatchedPlatforms(configPlatforms []string, matched []v1.Platform) ([]string, error) {
+	if len(configPlatforms) == 0 {
+		return nil, nil
+	}
+	var unmatched []string
+	for i, c := range configPlatforms {
+		p, err := v1.ParsePlatform(c)
+		if err != nil {
+			zap.L().Error("platform", zap.Int("i", i), zap.String("config", c), zap.Error(err))
+			return nil, err
+		}
+		found := false
+		for _, m := range matched {
+			if m.Equals(*p) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			unmatched = append(unmatched, c)
+		}
+	}
+	return unmatched, nil
+}
+
 // MatchPlatformsForAppend matches only on platform equality
 // which is stricter than platform at runtime image pull because
 // we don't want to widen the scope of a base image

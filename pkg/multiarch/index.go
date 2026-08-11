@@ -18,10 +18,14 @@ import (
 var noDigestYet = v1.Hash{}
 
 type IndexManifests struct {
-	baseRef    name.Digest
-	toAppend   []ToAppend
-	indexStart v1.ImageIndex
-	prototype  *ToAppend
+	baseRef  name.Digest
+	toAppend []ToAppend
+	// basePlatforms is every platform the base index declares, in index
+	// order, including those the platforms config excluded. Kept so that
+	// errors about an unmatched request can show what the base does offer.
+	basePlatforms []string
+	indexStart    v1.ImageIndex
+	prototype     *ToAppend
 }
 
 type ToAppend struct {
@@ -143,6 +147,7 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 		}
 		index.toAppend = append(index.toAppend, base)
 	}
+	index.basePlatforms = basePlatforms
 
 	// prototype and toAppend are populated together, so this covers both
 	// "nothing in the index is usable" and "the platforms config excluded
@@ -234,6 +239,12 @@ func (m *IndexManifests) MatchedPlatforms() []v1.Platform {
 		out[i] = *c.meta.Platform
 	}
 	return out
+}
+
+// BasePlatforms returns every platform declared by the base index, including
+// the ones the platforms config excluded. Only for diagnostics.
+func (m *IndexManifests) BasePlatforms() []string {
+	return m.basePlatforms
 }
 
 // SizeAppend is the number of manifests we'd append to

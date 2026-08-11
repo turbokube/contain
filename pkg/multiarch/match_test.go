@@ -95,3 +95,44 @@ func TestPlatformString(t *testing.T) {
 		Variant:      "v8",
 	})).To(Equal("linux/arm64/v8"))
 }
+
+func TestUnmatchedPlatforms(t *testing.T) {
+	RegisterTestingT(t)
+	base := []v1.Platform{
+		{OS: "linux", Architecture: "amd64"},
+		{OS: "linux", Architecture: "arm64"},
+	}
+
+	// no config platforms means "whatever the base has"
+	u, err := multiarch.UnmatchedPlatforms(nil, base)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(u).To(BeEmpty())
+
+	u, err = multiarch.UnmatchedPlatforms([]string{"linux/amd64", "linux/arm64"}, base)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(u).To(BeEmpty())
+
+	// a subset of the base is a valid request
+	u, err = multiarch.UnmatchedPlatforms([]string{"linux/arm64"}, base)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(u).To(BeEmpty())
+
+	u, err = multiarch.UnmatchedPlatforms([]string{"linux/amd64", "linux/s390x"}, base)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(u).To(Equal([]string{"linux/s390x"}))
+
+	// variant spelling is compared exactly, as MatchPlatformsForAppend does
+	u, err = multiarch.UnmatchedPlatforms([]string{"linux/arm64/v8"}, base)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(u).To(Equal([]string{"linux/arm64/v8"}))
+
+	// and in the other direction
+	u, err = multiarch.UnmatchedPlatforms([]string{"linux/arm64"}, []v1.Platform{
+		{OS: "linux", Architecture: "arm64", Variant: "v8"},
+	})
+	Expect(err).NotTo(HaveOccurred())
+	Expect(u).To(Equal([]string{"linux/arm64"}))
+
+	_, err = multiarch.UnmatchedPlatforms([]string{"a/b/c/d"}, base)
+	Expect(err).To(HaveOccurred())
+}
