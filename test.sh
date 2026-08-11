@@ -5,6 +5,17 @@ set -eo pipefail
 # additional args are passed to skaffold build
 # to build a subset use for example: -b config-override,config-stdin
 
+# gofmt and vet before anything slow. ./... stops at the module boundary,
+# so the scripts module needs its own invocation.
+UNFORMATTED=$(gofmt -l cmd pkg scripts)
+if [ -n "$UNFORMATTED" ]; then
+  echo "ERROR: not gofmt-clean, run 'gofmt -w cmd pkg scripts':"
+  echo "$UNFORMATTED"
+  exit 1
+fi
+go vet ./...
+(cd scripts && go vet ./...)
+
 mkdir -p dist/test
 go test ./pkg/... -coverprofile=dist/test/cover.out -covermode=atomic
 
