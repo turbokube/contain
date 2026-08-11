@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
@@ -23,10 +22,7 @@ const (
 	repo  = "contain"
 )
 
-var (
-	publishVersion    = "0.9.2"
-	releaseBinaryName = regexp.MustCompile(`^contain-v(?P<version>\d+\.\d+\.\d+)-(?P<os>[a-z0-9]+)-(?P<arch>[a-z0-9]+)(?P<ext>\.exe)?(?P<checksum>\.[a-z0-9]+)?$`)
-)
+var releaseBinaryName = regexp.MustCompile(`^contain-v(?P<version>\d+\.\d+\.\d+)-(?P<os>[a-z0-9]+)-(?P<arch>[a-z0-9]+)(?P<ext>\.exe)?(?P<checksum>\.[a-z0-9]+)?$`)
 
 type OS int
 
@@ -38,6 +34,7 @@ type ContainBin struct {
 
 type ParentPackage struct {
 	Name     string `json:"name"`
+	Version  string `json:"version"`
 	Homepage string `json:"homepage"`
 	Licence  string `json:"license"`
 }
@@ -138,13 +135,22 @@ func main() {
 	var err error
 
 	parent := ParentPackage{}
-	parentP, err := ioutil.ReadFile("package.json")
+	parentP, err := os.ReadFile("package.json")
 	if err != nil {
 		zap.L().Fatal("read package.json", zap.Error(err))
 	}
 	if err := json.Unmarshal(parentP, &parent); err != nil {
 		zap.L().Fatal("unmarshal package.json", zap.Error(err))
 	}
+	// package.json is the single source of truth for the version. It also
+	// carries the optionalDependencies pinned to the same version, so a
+	// separate constant here would silently publish binary packages that the
+	// parent does not depend on.
+	publishVersion := parent.Version
+	if publishVersion == "" {
+		zap.L().Fatal("package.json has no version")
+	}
+	zap.L().Info("publishing", zap.String("version", publishVersion), zap.String("package", parent.Name))
 
 	client, err := github.NewClient(nil)
 	if err != nil {
@@ -197,6 +203,11 @@ func main() {
 	for _, asset := range publishRelease.Assets {
 		match := releaseBinaryName.FindStringSubmatch(asset.GetName())
 		zap.L().Debug("asset", zap.String("name", asset.GetName()), zap.Strings("match", match))
+		if match == nil {
+			// a release may carry assets we do not publish, e.g. source archives
+			zap.L().Debug("ignore, not a release binary", zap.String("name", asset.GetName()))
+			continue
+		}
 		if match[5] != "" {
 			zap.L().Debug("ignore", zap.String("name", asset.GetName()))
 			continue
@@ -241,7 +252,7 @@ func main() {
 		if err != nil {
 			zap.L().Fatal("marshal package.json", zap.Error(err))
 		}
-		if err := ioutil.WriteFile(path.Join(dir, "package.json"), j, 0644); err != nil {
+		if err := os.WriteFile(path.Join(dir, "package.json"), j, 0644); err != nil {
 			zap.L().Fatal("write package.json", zap.Error(err))
 		}
 		bin := path.Join(dir, p.Bin[binname])
@@ -272,6 +283,9 @@ func main() {
 
 func releaseFromTag(ctx context.Context, client *github.Client, repository *github.Repository, tag *github.RepositoryTag) (*github.RepositoryRelease, error) {
 	// or "Create release" from the ...-button at https://github.com/turbokube/contain/tags
-	zap.L().Fatal("TODO publish manually", zap.String("at", *repository.TagsURL))
+	zap.L().Fatal("TODO publish manually",
+		zap.String("tag", tag.GetName()),
+		zap.String("at", repository.GetTagsURL()),
+	)
 	return nil, nil
 }
