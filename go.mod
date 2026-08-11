@@ -34,6 +34,11 @@ require (
 	github.com/sirupsen/logrus v1.9.4 // indirect
 )
 
+// Platform normalization, see pkg/platform. v0.2.1 is what @latest resolves
+// to; the v1.0.0-rc line additionally folds the arm64 v8.0 and v9.0 spellings,
+// which no base we know of uses.
+require github.com/containerd/platforms v0.2.1
+
 require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver v1.5.0 // indirect
@@ -45,6 +50,7 @@ require (
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/stargz-snapshotter/estargz v0.18.2 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect

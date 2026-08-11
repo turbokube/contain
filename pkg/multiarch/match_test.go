@@ -9,6 +9,14 @@ import (
 	schema "github.com/turbokube/contain/pkg/schema/v1"
 )
 
+func desc(p *v1.Platform) v1.Descriptor {
+	return v1.Descriptor{Platform: p}
+}
+
+func platformPtr(os, arch, variant string) *v1.Platform {
+	return &v1.Platform{OS: os, Architecture: arch, Variant: variant}
+}
+
 func TestMatchPlatformsForAppend(t *testing.T) {
 	RegisterTestingT(t)
 	c := schema.ContainConfig{
@@ -19,81 +27,47 @@ func TestMatchPlatformsForAppend(t *testing.T) {
 	}
 	m, err := multiarch.MatchPlatformsForAppend(c)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(m(v1.Descriptor{
-		Platform: &v1.Platform{
-			OS:           "linux",
-			Architecture: "amd64",
-		},
-	})).To(BeTrue())
-	Expect(m(v1.Descriptor{
-		Platform: &v1.Platform{
-			OS:           "linux",
-			Architecture: "amd64",
-			Variant:      "v8",
-		},
-	})).To(BeFalse())
-	Expect(m(v1.Descriptor{
-		Platform: &v1.Platform{
-			OS:           "linux",
-			Architecture: "arm64",
-			Variant:      "v8",
-		},
-	})).To(BeTrue())
-	Expect(m(v1.Descriptor{
-		Platform: &v1.Platform{
-			OS:           "linux",
-			Architecture: "arm64",
-			Variant:      "v7",
-		},
-	})).To(BeFalse())
-	// this would be the base image having no variant set
-	Expect(m(v1.Descriptor{
-		Platform: &v1.Platform{
-			OS:           "linux",
-			Architecture: "arm64",
-		},
-		// we don't know if we can specialize the base image's platform
-	})).To(BeFalse())
-	c2 := schema.ContainConfig{
-		Platforms: []string{
-			"linux/arm64",
-		},
-	}
+	Expect(m(desc(platformPtr("linux", "amd64", "")))).To(BeTrue())
+	Expect(m(desc(platformPtr("linux", "arm64", "v8")))).To(BeTrue())
+	// the base image declaring arm64 without a variant is the same platform
+	// as the configured arm64/v8, so it now matches
+	Expect(m(desc(platformPtr("linux", "arm64", "")))).To(BeTrue())
+	// normalization does not widen: these stay distinct
+	Expect(m(desc(platformPtr("linux", "amd64", "v8")))).To(BeFalse())
+	Expect(m(desc(platformPtr("linux", "arm64", "v7")))).To(BeFalse())
+	Expect(m(desc(platformPtr("linux", "arm64", "v9")))).To(BeFalse())
+	Expect(m(desc(platformPtr("linux", "arm", "v8")))).To(BeFalse())
+	Expect(m(desc(platformPtr("darwin", "amd64", "")))).To(BeFalse())
+
+	// the reported case: config without the variant, base with it
+	c2 := schema.ContainConfig{Platforms: []string{"linux/arm64"}}
 	m2, err := multiarch.MatchPlatformsForAppend(c2)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(m2(v1.Descriptor{
-		Platform: &v1.Platform{
-			OS:           "linux",
-			Architecture: "arm64",
-		},
-	})).To(BeTrue())
-	// this would be the config having no variant but the base image having it
-	Expect(m2(v1.Descriptor{
-		Platform: &v1.Platform{
-			OS:           "linux",
-			Architecture: "arm64",
-			Variant:      "v8",
-		},
-		// we don't know if we can generalize the base image's platform
-	})).To(BeFalse())
-}
+	Expect(m2(desc(platformPtr("linux", "arm64", "")))).To(BeTrue())
+	Expect(m2(desc(platformPtr("linux", "arm64", "v8")))).To(BeTrue())
+	Expect(m2(desc(platformPtr("linux", "arm64", "v8.1")))).To(BeFalse())
 
-func TestPlatformString(t *testing.T) {
-	RegisterTestingT(t)
-	// index descriptors may omit platform, and v1.Platform.String has a value
-	// receiver, so the nil case must not reach it
-	Expect(multiarch.PlatformString(nil)).To(Equal("<none>"))
-	// a non-nil but empty platform is the caller's business, v1 renders it as ""
-	Expect(multiarch.PlatformString(&v1.Platform{})).To(Equal(""))
-	Expect(multiarch.PlatformString(&v1.Platform{
-		OS:           "linux",
-		Architecture: "arm64",
-	})).To(Equal("linux/arm64"))
-	Expect(multiarch.PlatformString(&v1.Platform{
-		OS:           "linux",
-		Architecture: "arm64",
-		Variant:      "v8",
-	})).To(Equal("linux/arm64/v8"))
+	// linux/arm means arm/v7 exactly, not "any arm". A base declaring v5, v6
+	// and v7 must contribute one child, not three.
+	c3 := schema.ContainConfig{Platforms: []string{"linux/arm"}}
+	m3, err := multiarch.MatchPlatformsForAppend(c3)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(m3(desc(platformPtr("linux", "arm", "v7")))).To(BeTrue())
+	Expect(m3(desc(platformPtr("linux", "arm", "")))).To(BeTrue())
+	Expect(m3(desc(platformPtr("linux", "arm", "v5")))).To(BeFalse())
+	Expect(m3(desc(platformPtr("linux", "arm", "v6")))).To(BeFalse())
+
+	// no platforms config means take whatever the base has
+	m4, err := multiarch.MatchPlatformsForAppend(schema.ContainConfig{})
+	Expect(err).NotTo(HaveOccurred())
+	Expect(m4(desc(platformPtr("linux", "s390x", "")))).To(BeTrue())
+	Expect(m4(desc(nil))).To(BeTrue())
+
+	// a descriptor without a platform cannot satisfy a platforms config
+	Expect(m(desc(nil))).To(BeFalse())
+
+	_, err = multiarch.MatchPlatformsForAppend(schema.ContainConfig{Platforms: []string{"a/b/c/d"}})
+	Expect(err).To(HaveOccurred())
 }
 
 func TestUnmatchedPlatforms(t *testing.T) {
@@ -121,17 +95,27 @@ func TestUnmatchedPlatforms(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(u).To(Equal([]string{"linux/s390x"}))
 
-	// variant spelling is compared exactly, as MatchPlatformsForAppend does
+	// the variant spellings agree in both directions, so neither is unmatched
 	u, err = multiarch.UnmatchedPlatforms([]string{"linux/arm64/v8"}, base)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(u).To(Equal([]string{"linux/arm64/v8"}))
+	Expect(u).To(BeEmpty())
 
-	// and in the other direction
 	u, err = multiarch.UnmatchedPlatforms([]string{"linux/arm64"}, []v1.Platform{
 		{OS: "linux", Architecture: "arm64", Variant: "v8"},
 	})
 	Expect(err).NotTo(HaveOccurred())
-	Expect(u).To(Equal([]string{"linux/arm64"}))
+	Expect(u).To(BeEmpty())
+
+	// still reported when the variant is a real feature level
+	u, err = multiarch.UnmatchedPlatforms([]string{"linux/arm64/v8.1"}, base)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(u).To(Equal([]string{"linux/arm64/v8.1"}))
+
+	// the reported spelling is the config's, not the normalized form, so the
+	// error names what the user wrote
+	u, err = multiarch.UnmatchedPlatforms([]string{"linux/aarch64/v9"}, base)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(u).To(Equal([]string{"linux/aarch64/v9"}))
 
 	_, err = multiarch.UnmatchedPlatforms([]string{"a/b/c/d"}, base)
 	Expect(err).To(HaveOccurred())

@@ -9,6 +9,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/types"
+	"github.com/turbokube/contain/pkg/platform"
 	"github.com/turbokube/contain/pkg/pushed"
 	"github.com/turbokube/contain/pkg/registry"
 	schema "github.com/turbokube/contain/pkg/schema/v1"
@@ -102,7 +103,7 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 		zap.L().Debug("child descriptor",
 			zap.Int("item", i),
 			zap.String("mediaType", string(d.MediaType)),
-			zap.String("platform", PlatformString(d.Platform)),
+			zap.String("platform", platform.String(d.Platform)),
 		)
 		if d.Platform == nil {
 			zap.L().Info("skipping manifest without platform",
@@ -172,7 +173,7 @@ func NewFromMultiArchBase(config schema.ContainConfig, baseRegistry *registry.Re
 	// If reusing the original index turns out to be a bad idea we could start from empty.Index
 	index.indexStart = mutate.RemoveManifests(baseIndex, func(desc v1.Descriptor) bool {
 		zap.L().Debug("index entry clear",
-			zap.String("platform", PlatformString(desc.Platform)),
+			zap.String("platform", platform.String(desc.Platform)),
 			zap.String("digest", desc.Digest.String()),
 		)
 		// or do we want to keep attestation manifests?
@@ -276,7 +277,7 @@ func (m *IndexManifests) BuildWithAppend(append EachAppend, tagRef name.Referenc
 	}
 	for _, added := range manifests {
 		zap.L().Debug("index entry addded",
-			zap.String("platform", PlatformString(added.Platform)),
+			zap.String("platform", platform.String(added.Platform)),
 			zap.String("digest", added.Digest.String()),
 		)
 	}

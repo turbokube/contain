@@ -60,11 +60,11 @@ func TestPlatformsRequestedButMissingFromBase(t *testing.T) {
 	Expect(headErr).To(HaveOccurred(), "nothing may be pushed when a requested platform is missing")
 }
 
-// The mirror case of the request in the arch-support report: the base spells
-// arm64 without a variant, the config spells it with one. Matching is exact
-// today, so this is a failure, and the error has to name both spellings
-// rather than leaving the caller to diff two log lines.
-func TestPlatformsVariantSpellingMismatchIsExplained(t *testing.T) {
+// The case the arch-support report is about, in the direction their bases do
+// not have: the base declares plain linux/arm64 and the config spells the
+// variant. One platform either way, and the child keeps the base's spelling
+// because contain does not rewrite what it appends to.
+func TestPlatformsVariantSpellingMatchesBase(t *testing.T) {
 	RegisterTestingT(t)
 	cfg, dir := platformsTestConfig(t, "contain-test/platforms:variant",
 		[]string{"linux/amd64", "linux/arm64/v8"})
@@ -74,10 +74,16 @@ func TestPlatformsVariantSpellingMismatchIsExplained(t *testing.T) {
 
 	builders, err := contain.RunLayers(cfg)
 	Expect(err).NotTo(HaveOccurred())
-	_, err = contain.RunAppend(cfg, builders, contain.WriteOptions{Push: true})
-	Expect(err).To(HaveOccurred(), "linux/arm64/v8 does not match a base child declaring linux/arm64")
-	Expect(err.Error()).To(ContainSubstring("linux/arm64/v8"), "error must name the requested spelling")
-	Expect(err.Error()).To(ContainSubstring("linux/arm64"), "error must name the base's spelling")
+	out, err := contain.RunAppend(cfg, builders, contain.WriteOptions{Push: true})
+	Expect(err).NotTo(HaveOccurred(), "linux/arm64/v8 denotes the same platform as the base's linux/arm64")
+
+	artifact := out.Artifact()
+	got := make([]string, 0, len(artifact.Platforms))
+	for _, p := range artifact.Platforms {
+		got = append(got, p.String())
+	}
+	Expect(got).To(ConsistOf("linux/amd64", "linux/arm64"),
+		"the result index reports the platforms actually pushed, not the config spelling")
 }
 
 // Requesting exactly what the base offers still builds every platform.

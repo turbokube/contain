@@ -93,6 +93,39 @@ There are many image manifests formats but Contain supports only OCI.
 By validating manifest types Contain helps keeping your images consistent.
 Future versions could add support for other formats, but that would be opt-in by config.
 
+### platform matching
+
+Platforms are compared after normalization, using
+[containerd/platforms](https://github.com/containerd/platforms), so the
+spellings the ecosystem uses for one platform are one platform to Contain:
+`linux/arm64` and `linux/arm64/v8` match each other in both directions, as do
+`linux/arm` and `linux/arm/v7`, and `linux/amd64` and `linux/amd64/v1`. This is
+what Skaffold does with the same `PLATFORMS` value it passes to Contain.
+
+Normalization does not widen. Platforms that genuinely differ stay different,
+including `linux/arm/v6` against `linux/arm/v7`, the arm64 feature levels
+`v8.1` and `v9`, and the amd64 microarchitecture levels `v2` to `v4`. One
+configured platform selects at most one manifest from the base index, so
+`linux/arm` against a base declaring v5, v6 and v7 builds one image, not three.
+
+Every configured platform must match a manifest in the base index. Building a
+subset of what was asked for is an error, naming both what matched nothing and
+what the base offers:
+
+```
+platforms [linux/s390x] matched no manifest in base <ref>, which has [linux/amd64 linux/arm64]
+```
+
+`localFile.pathPerPlatform` keys are matched the same way, so a key and a base
+child cannot disagree about which file serves which platform. A key naming no
+variant, for example `linux/amd64`, additionally serves any variant of that
+architecture.
+
+The platform reported in `--file-output` is the platform of the image that was
+pushed, taken from the base image it was appended to. Contain does not rewrite
+the base's spelling, so that value can be compared against the registry
+manifest as-is.
+
 ### execution
 
 Here's an example of a base image manifest, with optional attestation:
