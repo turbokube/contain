@@ -9,6 +9,17 @@ import (
 
 // match has utils for matching index member descriptors based on config
 
+// PlatformString renders a platform for logs and errors, tolerating nil.
+// v1.Platform.String has a value receiver, so calling it on a nil
+// *v1.Platform panics, and platform is OPTIONAL on an index descriptor:
+// a base index may carry manifests (referrers, artifacts) without one.
+func PlatformString(p *v1.Platform) string {
+	if p == nil {
+		return "<none>"
+	}
+	return p.String()
+}
+
 // MatchPlatformsForAppend matches only on platform equality
 // which is stricter than platform at runtime image pull because
 // we don't want to widen the scope of a base image

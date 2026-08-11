@@ -77,3 +77,21 @@ func TestMatchPlatformsForAppend(t *testing.T) {
 		// we don't know if we can generalize the base image's platform
 	})).To(BeFalse())
 }
+
+func TestPlatformString(t *testing.T) {
+	RegisterTestingT(t)
+	// index descriptors may omit platform, and v1.Platform.String has a value
+	// receiver, so the nil case must not reach it
+	Expect(multiarch.PlatformString(nil)).To(Equal("<none>"))
+	// a non-nil but empty platform is the caller's business, v1 renders it as ""
+	Expect(multiarch.PlatformString(&v1.Platform{})).To(Equal(""))
+	Expect(multiarch.PlatformString(&v1.Platform{
+		OS:           "linux",
+		Architecture: "arm64",
+	})).To(Equal("linux/arm64"))
+	Expect(multiarch.PlatformString(&v1.Platform{
+		OS:           "linux",
+		Architecture: "arm64",
+		Variant:      "v8",
+	})).To(Equal("linux/arm64/v8"))
+}
