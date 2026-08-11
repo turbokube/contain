@@ -13,7 +13,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/google/go-github/v50/github"
+	"github.com/google/go-github/v90/github"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -146,7 +146,10 @@ func main() {
 		zap.L().Fatal("unmarshal package.json", zap.Error(err))
 	}
 
-	client := github.NewClient(nil)
+	client, err := github.NewClient(nil)
+	if err != nil {
+		zap.L().Fatal("github client", zap.Error(err))
+	}
 	repository, _, err := client.Repositories.Get(ctx, owner, repo)
 	if err != nil {
 		zap.L().Fatal("repository access", zap.Error(err))
@@ -156,11 +159,15 @@ func main() {
 	if err != nil {
 		zap.L().Fatal("tags access", zap.Error(err))
 	}
+	publishTagName := fmt.Sprintf("v%s", publishVersion)
 	for _, tag := range tags {
-		if *tag.Name == fmt.Sprintf("v%s", publishVersion) {
+		if tag.GetName() == publishTagName {
 			publishTag = tag
 		}
-		zap.L().Debug("tag", zap.String("name", *tag.Name), zap.String("sha", *tag.Commit.SHA))
+		zap.L().Debug("tag", zap.String("name", tag.GetName()), zap.String("sha", tag.GetCommit().GetSHA()))
+	}
+	if publishTag == nil {
+		zap.L().Fatal("tag not found", zap.String("tag", publishTagName), zap.String("version", publishVersion))
 	}
 
 	releases, _, err := client.Repositories.ListReleases(ctx, owner, repo, nil)
@@ -168,14 +175,14 @@ func main() {
 		zap.L().Fatal("releases access", zap.Error(err))
 	}
 	for _, release := range releases {
-		if *release.TagName == *publishTag.Name {
+		if release.GetTagName() == publishTag.GetName() {
 			publishRelease = release
 		}
-		zap.L().Debug("release", zap.String("tag", *release.TagName))
+		zap.L().Debug("release", zap.String("tag", release.GetTagName()))
 	}
 
 	if publishRelease == nil {
-		zap.L().Warn("not released yet", zap.String("tag", *publishTag.Name))
+		zap.L().Warn("not released yet", zap.String("tag", publishTag.GetName()))
 		publishRelease, err = releaseFromTag(ctx, client, repository, publishTag)
 		if err != nil {
 			zap.L().Fatal("release from tag", zap.Error(err))
@@ -188,10 +195,10 @@ func main() {
 		zap.L().Fatal("parent dir", zap.Error(err))
 	}
 	for _, asset := range publishRelease.Assets {
-		match := releaseBinaryName.FindStringSubmatch(*asset.Name)
-		zap.L().Debug("asset", zap.String("name", *asset.Name), zap.Strings("match", match))
+		match := releaseBinaryName.FindStringSubmatch(asset.GetName())
+		zap.L().Debug("asset", zap.String("name", asset.GetName()), zap.Strings("match", match))
 		if match[5] != "" {
-			zap.L().Debug("ignore", zap.String("name", *asset.Name))
+			zap.L().Debug("ignore", zap.String("name", asset.GetName()))
 			continue
 		}
 		version := match[1]
