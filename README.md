@@ -14,6 +14,7 @@ The CLI now has sub-commands (migrated to [cobra](https://github.com/spf13/cobra
 - `contain build` – existing build/append functionality (also the default when you invoke just `contain ...` for backwards compatibility).
 - `contain sbom` – experimental stub that will generate a Software Bill of Materials from a build metadata file in future versions. Currently it just echoes the provided `--build-metadata` path.
 - `contain push` – push an OCI image layout to a registry with digests preserved verbatim (see below).
+- `contain registry-proxy` – localhost registry endpoint forwarding to an upstream registry, so stock docker tooling can push any layer size (see below).
 
 Examples (old style still works):
 
@@ -36,8 +37,31 @@ Registries implementing the direct-to-storage upload extension
 (`POST /ext/v1/blobs/uploads` + `/commit`, e.g. Yolean's Cloudflare R2
 registry where the proxy caps request bodies) receive blobs at or above
 `--direct-threshold` (default 8 MiB) via presigned URLs uploaded in
-parallel straight to object storage. Other registries transparently fall
-back to standard OCI uploads.
+parallel straight to object storage, with any session-prescribed headers
+(e.g. `x-amz-checksum-sha256` so storage verifies content itself). Other
+registries transparently fall back to standard OCI uploads.
+
+## registry-proxy subcommand
+
+`contain registry-proxy` serves an unauthenticated OCI registry on
+localhost that forwards to an upstream registry, for docker contexts
+where builds should push with stock tooling regardless of upstream
+upload limits:
+
+```
+docker run -d -v $HOME/.docker:/dockercfg:ro -e DOCKER_CONFIG=/dockercfg \
+  -p 127.0.0.1:5000:5000 ghcr.io/yolean/contain \
+  registry-proxy --upstream registry.example.com --addr 0.0.0.0:5000
+docker push localhost:5000/app/name:tag
+```
+
+Blob uploads are staged to temp files (unbounded size), digest-verified,
+then re-uploaded like `contain push` (direct-to-storage for large blobs).
+Pulls and manifest reads pass through with upstream credentials from the
+docker keychain. Only bind to localhost or trusted networks — the proxy
+itself does not authenticate clients. Note that docker configs using
+`credsStore` (Docker Desktop) resolve via the host keychain, which is not
+available inside a container; mount a plain `config.json` with `auths`.
 
 ## sbom subcommand
 

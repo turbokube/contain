@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sync/atomic"
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -22,19 +23,18 @@ const partUploadConcurrency = 4
 
 var errExtUnsupported = errors.New("registry does not support the direct-upload extension")
 
-type pusher struct {
-	layout       string
-	repo         string // repository path within the registry
+// regClient talks to one upstream registry; repository is per call so the
+// registry-proxy can serve many repos through one client.
+type regClient struct {
 	base         string // scheme://host of the registry
 	authHeader   string
-	client       *http.Client
-	ext          bool
+	http         *http.Client
+	extDisabled  atomic.Bool
 	extThreshold int64
 	partSize     int64
 }
 
-func newPusher(ref name.Reference, layoutDir string, opts Options) (*pusher, error) {
-	reg := ref.Context().Registry
+func newRegClient(reg name.Registry, opts Options) (*regClient, error) {
 	auth := opts.Auth
 	if auth == nil {
 		keychain := opts.Keychain
@@ -42,7 +42,7 @@ func newPusher(ref name.Reference, layoutDir string, opts Options) (*pusher, err
 			keychain = authn.DefaultKeychain
 		}
 		var err error
-		auth, err = keychain.Resolve(ref.Context())
+		auth, err = keychain.Resolve(reg)
 		if err != nil {
 			return nil, fmt.Errorf("resolve credentials for %s: %w", reg.RegistryStr(), err)
 		}
@@ -70,13 +70,10 @@ func newPusher(ref name.Reference, layoutDir string, opts Options) (*pusher, err
 	if opts.Transport != nil {
 		client = &http.Client{Transport: opts.Transport}
 	}
-	return &pusher{
-		layout:       layoutDir,
-		repo:         ref.Context().RepositoryStr(),
+	return &regClient{
 		base:         fmt.Sprintf("%s://%s", reg.Scheme(), reg.RegistryStr()),
 		authHeader:   header,
-		client:       client,
-		ext:          true,
+		http:         client,
 		extThreshold: threshold,
 		partSize:     opts.PartSize,
 	}, nil
@@ -84,11 +81,11 @@ func newPusher(ref name.Reference, layoutDir string, opts Options) (*pusher, err
 
 // do sends a request to the registry with credentials attached. Presigned
 // storage URLs must NOT go through this (their signature covers no auth).
-func (p *pusher) do(req *http.Request) (*http.Response, error) {
-	if p.authHeader != "" {
-		req.Header.Set("Authorization", p.authHeader)
+func (c *regClient) do(req *http.Request) (*http.Response, error) {
+	if c.authHeader != "" {
+		req.Header.Set("Authorization", c.authHeader)
 	}
-	return p.client.Do(req)
+	return c.http.Do(req)
 }
 
 func errorBody(res *http.Response) string {
@@ -97,13 +94,13 @@ func errorBody(res *http.Response) string {
 	return string(b)
 }
 
-func (p *pusher) blobExists(ctx context.Context, digest string) (bool, error) {
+func (c *regClient) blobExists(ctx context.Context, repo string, digest string) (bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead,
-		fmt.Sprintf("%s/v2/%s/blobs/%s", p.base, p.repo, digest), nil)
+		fmt.Sprintf("%s/v2/%s/blobs/%s", c.base, repo, digest), nil)
 	if err != nil {
 		return false, err
 	}
-	res, err := p.do(req)
+	res, err := c.do(req)
 	if err != nil {
 		return false, fmt.Errorf("blob head %s: %w", digest, err)
 	}
@@ -118,15 +115,40 @@ func (p *pusher) blobExists(ctx context.Context, digest string) (bool, error) {
 	}
 }
 
+// pushBlobFile uploads the blob in the file at path unless it already exists
+// upstream, preferring the direct-to-storage extension for large blobs.
+func (c *regClient) pushBlobFile(ctx context.Context, repo string, d descriptor, path string) error {
+	exists, err := c.blobExists(ctx, repo, d.Digest)
+	if err != nil {
+		return err
+	}
+	if exists {
+		zap.L().Debug("blob exists", zap.String("digest", d.Digest), zap.Int64("size", d.Size))
+		return nil
+	}
+	if !c.extDisabled.Load() && d.Size >= c.extThreshold {
+		err := c.pushBlobExt(ctx, repo, d, path)
+		if err == nil {
+			return nil
+		}
+		if err != errExtUnsupported {
+			return err
+		}
+		c.extDisabled.Store(true)
+		zap.L().Debug("registry has no direct-upload extension, using standard uploads")
+	}
+	return c.pushBlobStandard(ctx, repo, d, path)
+}
+
 // pushBlobStandard is the OCI distribution-spec monolithic upload:
 // POST to open a session, PUT the whole blob to the returned location.
-func (p *pusher) pushBlobStandard(ctx context.Context, d descriptor) error {
-	postURL := fmt.Sprintf("%s/v2/%s/blobs/uploads/", p.base, p.repo)
+func (c *regClient) pushBlobStandard(ctx context.Context, repo string, d descriptor, path string) error {
+	postURL := fmt.Sprintf("%s/v2/%s/blobs/uploads/", c.base, repo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, postURL, nil)
 	if err != nil {
 		return err
 	}
-	res, err := p.do(req)
+	res, err := c.do(req)
 	if err != nil {
 		return fmt.Errorf("blob upload start: %w", err)
 	}
@@ -140,10 +162,6 @@ func (p *pusher) pushBlobStandard(ctx context.Context, d descriptor) error {
 		return err
 	}
 
-	path, err := p.blobPath(d.Digest)
-	if err != nil {
-		return err
-	}
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -155,7 +173,7 @@ func (p *pusher) pushBlobStandard(ctx context.Context, d descriptor) error {
 	}
 	put.ContentLength = d.Size
 	put.Header.Set("Content-Type", "application/octet-stream")
-	putRes, err := p.do(put)
+	putRes, err := c.do(put)
 	if err != nil {
 		return fmt.Errorf("blob put %s: %w", d.Digest, err)
 	}
@@ -192,6 +210,9 @@ type extStartResponse struct {
 	UploadID string   `json:"uploadId"`
 	PartSize int64    `json:"partSize"`
 	Urls     []string `json:"urls"`
+	// Headers must be sent on every part PUT; the registry uses this to pin
+	// e.g. x-amz-checksum-sha256 so object storage verifies content itself.
+	Headers map[string]string `json:"headers"`
 }
 
 type extPart struct {
@@ -202,13 +223,13 @@ type extPart struct {
 // pushBlobExt uploads via the registry's direct-to-storage extension:
 // presigned part URLs, parallel PUTs to object storage, then a commit call
 // that has the registry verify the digest server-side.
-func (p *pusher) pushBlobExt(ctx context.Context, d descriptor) error {
+func (c *regClient) pushBlobExt(ctx context.Context, repo string, d descriptor, path string) error {
 	start := map[string]any{"digest": d.Digest, "size": d.Size}
-	if p.partSize > 0 {
-		start["partSize"] = p.partSize
+	if c.partSize > 0 {
+		start["partSize"] = c.partSize
 	}
 	session := extStartResponse{}
-	res, err := p.postJSON(ctx, "/ext/v1/blobs/uploads", start)
+	res, err := c.postJSON(ctx, "/ext/v1/blobs/uploads", start)
 	if err != nil {
 		return fmt.Errorf("direct upload start: %w", err)
 	}
@@ -234,10 +255,6 @@ func (p *pusher) pushBlobExt(ctx context.Context, d descriptor) error {
 		return nil
 	}
 
-	path, err := p.blobPath(d.Digest)
-	if err != nil {
-		return err
-	}
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -260,8 +277,11 @@ func (p *pusher) pushBlobExt(ctx context.Context, d descriptor) error {
 				return err
 			}
 			req.ContentLength = length
-			// presigned URL: no registry credentials, p.client directly
-			res, err := p.client.Do(req)
+			for k, v := range session.Headers {
+				req.Header.Set(k, v)
+			}
+			// presigned URL: no registry credentials, c.http directly
+			res, err := c.http.Do(req)
 			if err != nil {
 				return fmt.Errorf("part %d: %w", i+1, err)
 			}
@@ -284,7 +304,7 @@ func (p *pusher) pushBlobExt(ctx context.Context, d descriptor) error {
 		commit["uploadId"] = session.UploadID
 		commit["parts"] = parts
 	}
-	commitRes, err := p.postJSON(ctx, "/ext/v1/blobs/commit", commit)
+	commitRes, err := c.postJSON(ctx, "/ext/v1/blobs/commit", commit)
 	if err != nil {
 		return fmt.Errorf("direct upload commit: %w", err)
 	}
@@ -297,27 +317,27 @@ func (p *pusher) pushBlobExt(ctx context.Context, d descriptor) error {
 	return nil
 }
 
-func (p *pusher) postJSON(ctx context.Context, path string, body any) (*http.Response, error) {
+func (c *regClient) postJSON(ctx context.Context, path string, body any) (*http.Response, error) {
 	b, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.base+path, bytes.NewReader(b))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, bytes.NewReader(b))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	return p.do(req)
+	return c.do(req)
 }
 
-func (p *pusher) putManifest(ctx context.Context, raw []byte, mediaType string, refOrDigest string) error {
+func (c *regClient) putManifest(ctx context.Context, repo string, raw []byte, mediaType string, refOrDigest string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
-		fmt.Sprintf("%s/v2/%s/manifests/%s", p.base, p.repo, refOrDigest), bytes.NewReader(raw))
+		fmt.Sprintf("%s/v2/%s/manifests/%s", c.base, repo, refOrDigest), bytes.NewReader(raw))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", mediaType)
-	res, err := p.do(req)
+	res, err := c.do(req)
 	if err != nil {
 		return fmt.Errorf("manifest put %s: %w", refOrDigest, err)
 	}

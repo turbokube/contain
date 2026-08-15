@@ -64,6 +64,13 @@ type manifestDoc struct {
 	Layers    []descriptor `json:"layers"`
 }
 
+// pusher walks an OCI layout and pushes to one repository.
+type pusher struct {
+	layout string
+	repo   string
+	c      *regClient
+}
+
 // Push pushes the OCI image layout at layoutDir to image (a tag or digest
 // reference). A single-entry index.json pushes its entry as the image root
 // (the docker buildx -o type=oci convention); a multi-entry index.json is
@@ -73,10 +80,11 @@ func Push(ctx context.Context, layoutDir string, image string, opts Options) err
 	if err != nil {
 		return fmt.Errorf("parse reference %s: %w", image, err)
 	}
-	p, err := newPusher(ref, layoutDir, opts)
+	c, err := newRegClient(ref.Context().Registry, opts)
 	if err != nil {
 		return err
 	}
+	p := &pusher{layout: layoutDir, repo: ref.Context().RepositoryStr(), c: c}
 
 	indexBytes, err := os.ReadFile(filepath.Join(layoutDir, "index.json"))
 	if err != nil {
@@ -147,28 +155,13 @@ func (p *pusher) pushManifestBytes(ctx context.Context, raw []byte, mediaType st
 	if mediaType == "" {
 		mediaType = mediaTypeImageManifest
 	}
-	return p.putManifest(ctx, raw, mediaType, refOrDigest)
+	return p.c.putManifest(ctx, p.repo, raw, mediaType, refOrDigest)
 }
 
 func (p *pusher) pushBlob(ctx context.Context, d descriptor) error {
-	exists, err := p.blobExists(ctx, d.Digest)
+	path, err := p.blobPath(d.Digest)
 	if err != nil {
 		return err
 	}
-	if exists {
-		zap.L().Debug("blob exists", zap.String("digest", d.Digest), zap.Int64("size", d.Size))
-		return nil
-	}
-	if p.ext && d.Size >= p.extThreshold {
-		err := p.pushBlobExt(ctx, d)
-		if err == nil {
-			return nil
-		}
-		if err != errExtUnsupported {
-			return err
-		}
-		p.ext = false
-		zap.L().Debug("registry has no direct-upload extension, using standard uploads")
-	}
-	return p.pushBlobStandard(ctx, d)
+	return p.c.pushBlobFile(ctx, p.repo, d, path)
 }

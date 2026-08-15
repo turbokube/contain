@@ -31,6 +31,7 @@ func init() {
 	rootCmd.AddCommand(newSbomCmd())
 	rootCmd.AddCommand(newCacheCmd())
 	rootCmd.AddCommand(newPushCmd())
+	rootCmd.AddCommand(newRegistryProxyCmd())
 }
 
 // build subcommand is defined in build.go via newBuildCmd()

@@ -166,8 +166,14 @@ func (f *extFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{
 			"digest": body.Digest, "key": key, "uploadId": uploadID,
 			"partSize": fakePartSize, "urls": urls,
+			"headers": map[string]string{"x-contain-test-checksum": body.Digest},
 		})
 	case r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/stage/"):
+		// session-prescribed headers must arrive on every part PUT
+		if !strings.HasPrefix(r.Header.Get("x-contain-test-checksum"), "sha256:") {
+			http.Error(w, "missing session header", 400)
+			return
+		}
 		key := strings.TrimPrefix(r.URL.Path, "/stage/")
 		var part int
 		fmt.Sscanf(r.URL.Query().Get("part"), "%d", &part)
