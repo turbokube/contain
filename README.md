@@ -13,6 +13,7 @@ The CLI now has sub-commands (migrated to [cobra](https://github.com/spf13/cobra
 
 - `contain build` – existing build/append functionality (also the default when you invoke just `contain ...` for backwards compatibility).
 - `contain sbom` – experimental stub that will generate a Software Bill of Materials from a build metadata file in future versions. Currently it just echoes the provided `--build-metadata` path.
+- `contain push` – push an OCI image layout to a registry with digests preserved verbatim (see below).
 
 Examples (old style still works):
 
@@ -20,7 +21,23 @@ Examples (old style still works):
 contain -x -b busybox:latest --file-output out.json
 contain build -x -b busybox:latest --file-output out.json
 contain sbom --build-metadata out/localdir.buildctl.json
+contain push out/oci-layout registry.example.com/app/name:tag
 ```
+
+## push subcommand
+
+`contain push` pushes an OCI image layout directory, e.g. from
+`docker buildx build -o type=oci,tar=false,dest=DIR`, to a registry.
+Manifests and blobs are transferred as raw bytes so all digests are
+preserved (unlike `remote.WriteIndex` from a layout, see pkg/testcases
+caveats). Credentials resolve like docker/crane.
+
+Registries implementing the direct-to-storage upload extension
+(`POST /ext/v1/blobs/uploads` + `/commit`, e.g. Yolean's Cloudflare R2
+registry where the proxy caps request bodies) receive blobs at or above
+`--direct-threshold` (default 8 MiB) via presigned URLs uploaded in
+parallel straight to object storage. Other registries transparently fall
+back to standard OCI uploads.
 
 ## sbom subcommand
 

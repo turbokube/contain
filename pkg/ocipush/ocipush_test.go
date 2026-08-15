@@ -1,0 +1,304 @@
+package ocipush_test
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/google/go-containerregistry/pkg/authn"
+	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/registry"
+	"github.com/google/go-containerregistry/pkg/v1/empty"
+	"github.com/google/go-containerregistry/pkg/v1/layout"
+	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/google/go-containerregistry/pkg/v1/random"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
+
+	"github.com/turbokube/contain/pkg/ocipush"
+)
+
+// TestPushSingleEntryLayout pushes a buildx-style layout (index.json with one
+// entry) to a plain registry without the direct-upload extension, so the
+// client must fall back to standard OCI uploads.
+func TestPushSingleEntryLayout(t *testing.T) {
+	img, err := random.Image(1024, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	ii := mutate.AppendManifests(empty.Index, mutate.IndexAddendum{Add: img})
+	if _, err := layout.Write(dir, ii); err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(registry.New(registry.Logger(log.New(io.Discard, "", 0))))
+	defer server.Close()
+	host := strings.TrimPrefix(server.URL, "http://")
+	image := host + "/test/single:v1"
+
+	// ExtThreshold 1 forces an extension attempt; the plain registry 404s it
+	// and the client must recover with standard uploads.
+	err = ocipush.Push(context.Background(), dir, image, ocipush.Options{
+		Auth:         authn.Anonymous,
+		ExtThreshold: 1,
+	})
+	if err != nil {
+		t.Fatalf("push: %v", err)
+	}
+
+	ref, err := name.ParseReference(image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := remote.Get(ref, remote.WithAuth(authn.Anonymous))
+	if err != nil {
+		t.Fatalf("pull after push: %v", err)
+	}
+	want, err := img.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Digest.String() != want.String() {
+		t.Errorf("digest not preserved: pushed %s got %s", want, got.Digest)
+	}
+}
+
+// TestPushMultiEntryLayout pushes a layout whose index.json has several
+// entries; the index.json content itself becomes the root manifest and its
+// digest must be preserved.
+func TestPushMultiEntryLayout(t *testing.T) {
+	ii, err := random.Index(1024, 2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if _, err := layout.Write(dir, ii); err != nil {
+		t.Fatal(err)
+	}
+	indexBytes, err := os.ReadFile(filepath.Join(dir, "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("sha256:%x", sha256.Sum256(indexBytes))
+
+	server := httptest.NewServer(registry.New(registry.Logger(log.New(io.Discard, "", 0))))
+	defer server.Close()
+	host := strings.TrimPrefix(server.URL, "http://")
+	image := host + "/test/multi:v1"
+
+	if err := ocipush.Push(context.Background(), dir, image, ocipush.Options{Auth: authn.Anonymous}); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+
+	ref, err := name.ParseReference(image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := remote.Get(ref, remote.WithAuth(authn.Anonymous))
+	if err != nil {
+		t.Fatalf("pull after push: %v", err)
+	}
+	if got.Digest.String() != want {
+		t.Errorf("index digest not preserved: index.json %s got %s", want, got.Digest)
+	}
+	idx, err := remote.Index(ref, remote.WithAuth(authn.Anonymous))
+	if err != nil {
+		t.Fatalf("as index: %v", err)
+	}
+	im, err := idx.IndexManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(im.Manifests) != 2 {
+		t.Errorf("expected 2 manifests in pushed index, got %d", len(im.Manifests))
+	}
+}
+
+// extFake wraps a plain registry with the direct-upload extension endpoints,
+// mimicking the Worker: presigned part URLs, staged parts, commit with
+// server-side digest verification before promotion to the blob store.
+type extFake struct {
+	reg       http.Handler
+	serverURL string
+	mu        sync.Mutex
+	staged    map[string]map[int][]byte // key -> part number -> bytes
+	uploads   int
+	commits   int
+}
+
+const fakePartSize = int64(1000)
+
+func (f *extFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.Method == http.MethodPost && r.URL.Path == "/ext/v1/blobs/uploads":
+		var body struct {
+			Digest string `json:"digest"`
+			Size   int64  `json:"size"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		key := "staging/" + body.Digest + "/fake"
+		parts := int((body.Size + fakePartSize - 1) / fakePartSize)
+		urls := make([]string, parts)
+		for i := range urls {
+			urls[i] = fmt.Sprintf("%s/stage/%s?part=%d", f.serverURL, key, i+1)
+		}
+		uploadID := ""
+		if parts > 1 {
+			uploadID = "fake-multipart"
+		}
+		f.mu.Lock()
+		f.staged[key] = map[int][]byte{}
+		f.uploads++
+		f.mu.Unlock()
+		json.NewEncoder(w).Encode(map[string]any{
+			"digest": body.Digest, "key": key, "uploadId": uploadID,
+			"partSize": fakePartSize, "urls": urls,
+		})
+	case r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/stage/"):
+		key := strings.TrimPrefix(r.URL.Path, "/stage/")
+		var part int
+		fmt.Sscanf(r.URL.Query().Get("part"), "%d", &part)
+		b, _ := io.ReadAll(r.Body)
+		f.mu.Lock()
+		f.staged[key][part] = b
+		f.mu.Unlock()
+		w.Header().Set("ETag", fmt.Sprintf("%q", fmt.Sprintf("part%d", part)))
+		w.WriteHeader(200)
+	case r.Method == http.MethodPost && r.URL.Path == "/ext/v1/blobs/commit":
+		var body struct {
+			Digest string `json:"digest"`
+			Size   int64  `json:"size"`
+			Key    string `json:"key"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		f.mu.Lock()
+		parts := f.staged[body.Key]
+		var blob []byte
+		for i := 1; i <= len(parts); i++ {
+			blob = append(blob, parts[i]...)
+		}
+		f.commits++
+		f.mu.Unlock()
+		if actual := fmt.Sprintf("sha256:%x", sha256.Sum256(blob)); actual != body.Digest {
+			http.Error(w, "digest mismatch: "+actual, 400)
+			return
+		}
+		if int64(len(blob)) != body.Size {
+			http.Error(w, "size mismatch", 400)
+			return
+		}
+		if err := f.promote(blob, body.Digest); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"ok": true, "digest": body.Digest})
+	default:
+		f.reg.ServeHTTP(w, r)
+	}
+}
+
+// promote pushes verified bytes into the wrapped registry's (global) blob
+// store via a synthesized standard upload.
+func (f *extFake) promote(blob []byte, digest string) error {
+	post := httptest.NewRequest(http.MethodPost, "/v2/staging/blobs/uploads/", nil)
+	rec := httptest.NewRecorder()
+	f.reg.ServeHTTP(rec, post)
+	if rec.Code != http.StatusAccepted {
+		return fmt.Errorf("promote start: %d", rec.Code)
+	}
+	location := rec.Result().Header.Get("Location")
+	sep := "?"
+	if strings.Contains(location, "?") {
+		sep = "&"
+	}
+	put := httptest.NewRequest(http.MethodPut, location+sep+"digest="+digest, strings.NewReader(string(blob)))
+	rec = httptest.NewRecorder()
+	f.reg.ServeHTTP(rec, put)
+	if rec.Code != http.StatusCreated {
+		return fmt.Errorf("promote put: %d", rec.Code)
+	}
+	return nil
+}
+
+// TestPushExt pushes through the extension API with multipart staging and
+// verifies both the resulting digests and that the extension was used.
+func TestPushExt(t *testing.T) {
+	img, err := random.Image(3500, 2) // layers > fakePartSize so multipart kicks in
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	ii := mutate.AppendManifests(empty.Index, mutate.IndexAddendum{Add: img})
+	if _, err := layout.Write(dir, ii); err != nil {
+		t.Fatal(err)
+	}
+
+	fake := &extFake{reg: registry.New(registry.Logger(log.New(io.Discard, "", 0))), staged: map[string]map[int][]byte{}}
+	server := httptest.NewServer(fake)
+	defer server.Close()
+	fake.serverURL = server.URL
+	host := strings.TrimPrefix(server.URL, "http://")
+	image := host + "/test/ext:v1"
+
+	err = ocipush.Push(context.Background(), dir, image, ocipush.Options{
+		Auth:         authn.Anonymous,
+		ExtThreshold: 1, // everything through the extension
+	})
+	if err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	if fake.uploads == 0 || fake.commits == 0 {
+		t.Errorf("extension not exercised: %d uploads %d commits", fake.uploads, fake.commits)
+	}
+
+	ref, err := name.ParseReference(image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := remote.Get(ref, remote.WithAuth(authn.Anonymous))
+	if err != nil {
+		t.Fatalf("pull after push: %v", err)
+	}
+	want, err := img.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Digest.String() != want.String() {
+		t.Errorf("digest not preserved: pushed %s got %s", want, got.Digest)
+	}
+	// pull the whole image to verify layer content integrity end to end
+	pulled, err := remote.Image(ref, remote.WithAuth(authn.Anonymous))
+	if err != nil {
+		t.Fatal(err)
+	}
+	layers, err := pulled.Layers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range layers {
+		rc, err := l.Compressed()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.Copy(io.Discard, rc); err != nil {
+			t.Errorf("layer read: %v", err)
+		}
+		rc.Close()
+	}
+}
