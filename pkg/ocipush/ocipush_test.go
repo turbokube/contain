@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -41,19 +42,30 @@ func TestPushSingleEntryLayout(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	server := httptest.NewServer(registry.New(registry.Logger(log.New(io.Discard, "", 0))))
+	// A plain registry must never receive extension-path requests: detection
+	// is discovery-only, and this registry does not advertise _directpush.
+	var extRequests atomic.Int32
+	reg := registry.New(registry.Logger(log.New(io.Discard, "", 0)))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "_directpush") {
+			extRequests.Add(1)
+		}
+		reg.ServeHTTP(w, r)
+	}))
 	defer server.Close()
 	host := strings.TrimPrefix(server.URL, "http://")
 	image := host + "/test/single:v1"
 
-	// ExtThreshold 1 forces an extension attempt; the plain registry 404s it
-	// and the client must recover with standard uploads.
+	// ExtThreshold 1 would use the extension for every blob if advertised.
 	err = ocipush.Push(context.Background(), dir, image, ocipush.Options{
 		Auth:         authn.Anonymous,
 		ExtThreshold: 1,
 	})
 	if err != nil {
 		t.Fatalf("push: %v", err)
+	}
+	if n := extRequests.Load(); n != 0 {
+		t.Errorf("plain registry received %d _directpush requests, want 0", n)
 	}
 
 	ref, err := name.ParseReference(image)
@@ -140,7 +152,14 @@ const fakePartSize = int64(1000)
 
 func (f *extFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
-	case r.Method == http.MethodPost && r.URL.Path == "/ext/v1/blobs/uploads":
+	case r.Method == http.MethodGet && r.URL.Path == "/v2/_oci/ext/discover":
+		json.NewEncoder(w).Encode(map[string]any{
+			"extensions": []map[string]any{{
+				"name":      "_directpush",
+				"endpoints": []string{"_directpush/v1/uploads", "_directpush/v1/commit"},
+			}},
+		})
+	case r.Method == http.MethodPost && r.URL.Path == "/v2/_directpush/v1/uploads":
 		var body struct {
 			Digest string `json:"digest"`
 			Size   int64  `json:"size"`
@@ -183,7 +202,7 @@ func (f *extFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.mu.Unlock()
 		w.Header().Set("ETag", fmt.Sprintf("%q", fmt.Sprintf("part%d", part)))
 		w.WriteHeader(200)
-	case r.Method == http.MethodPost && r.URL.Path == "/ext/v1/blobs/commit":
+	case r.Method == http.MethodPost && r.URL.Path == "/v2/_directpush/v1/commit":
 		var body struct {
 			Digest string `json:"digest"`
 			Size   int64  `json:"size"`

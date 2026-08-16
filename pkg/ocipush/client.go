@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
+	"sync"
 	"sync/atomic"
 
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -29,9 +31,52 @@ type regClient struct {
 	base         string // scheme://host of the registry
 	authHeader   string
 	http         *http.Client
+	discoverOnce sync.Once
+	extSupported bool
 	extDisabled  atomic.Bool
 	extThreshold int64
 	partSize     int64
+}
+
+type extDiscoverResponse struct {
+	Extensions []struct {
+		Name      string   `json:"name"`
+		Endpoints []string `json:"endpoints"`
+	} `json:"extensions"`
+}
+
+// directpushSupported detects the _directpush extension via the OCI
+// extensions discovery endpoint, once per registry. Registries that do not
+// positively advertise it get standard OCI uploads exclusively — no probing
+// of extension paths (PROTOCOL.md, attached).
+func (c *regClient) directpushSupported(ctx context.Context) bool {
+	c.discoverOnce.Do(func() {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/v2/_oci/ext/discover", nil)
+		if err != nil {
+			return
+		}
+		res, err := c.do(req)
+		if err != nil {
+			zap.L().Debug("extension discovery failed", zap.Error(err))
+			return
+		}
+		defer res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			return
+		}
+		var doc extDiscoverResponse
+		if err := json.NewDecoder(io.LimitReader(res.Body, 1024*1024)).Decode(&doc); err != nil {
+			return
+		}
+		for _, ext := range doc.Extensions {
+			if ext.Name == "_directpush" && slices.Contains(ext.Endpoints, "_directpush/v1/uploads") {
+				c.extSupported = true
+				zap.L().Debug("registry supports _directpush/v1")
+				return
+			}
+		}
+	})
+	return c.extSupported
 }
 
 func newRegClient(reg name.Registry, opts Options) (*regClient, error) {
@@ -126,7 +171,7 @@ func (c *regClient) pushBlobFile(ctx context.Context, repo string, d descriptor,
 		zap.L().Debug("blob exists", zap.String("digest", d.Digest), zap.Int64("size", d.Size))
 		return nil
 	}
-	if !c.extDisabled.Load() && d.Size >= c.extThreshold {
+	if !c.extDisabled.Load() && d.Size >= c.extThreshold && c.directpushSupported(ctx) {
 		err := c.pushBlobExt(ctx, repo, d, path)
 		if err == nil {
 			return nil
@@ -134,8 +179,9 @@ func (c *regClient) pushBlobFile(ctx context.Context, repo string, d descriptor,
 		if err != errExtUnsupported {
 			return err
 		}
+		// safety net: discovery said yes but the endpoint doesn't honor the contract
 		c.extDisabled.Store(true)
-		zap.L().Debug("registry has no direct-upload extension, using standard uploads")
+		zap.L().Warn("registry advertised _directpush but does not honor it, using standard uploads")
 	}
 	return c.pushBlobStandard(ctx, repo, d, path)
 }
@@ -229,7 +275,7 @@ func (c *regClient) pushBlobExt(ctx context.Context, repo string, d descriptor, 
 		start["partSize"] = c.partSize
 	}
 	session := extStartResponse{}
-	res, err := c.postJSON(ctx, "/ext/v1/blobs/uploads", start)
+	res, err := c.postJSON(ctx, "/v2/_directpush/v1/uploads", start)
 	if err != nil {
 		return fmt.Errorf("direct upload start: %w", err)
 	}
@@ -304,7 +350,7 @@ func (c *regClient) pushBlobExt(ctx context.Context, repo string, d descriptor, 
 		commit["uploadId"] = session.UploadID
 		commit["parts"] = parts
 	}
-	commitRes, err := c.postJSON(ctx, "/ext/v1/blobs/commit", commit)
+	commitRes, err := c.postJSON(ctx, "/v2/_directpush/v1/commit", commit)
 	if err != nil {
 		return fmt.Errorf("direct upload commit: %w", err)
 	}

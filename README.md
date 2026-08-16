@@ -33,13 +33,16 @@ Manifests and blobs are transferred as raw bytes so all digests are
 preserved (unlike `remote.WriteIndex` from a layout, see pkg/testcases
 caveats). Credentials resolve like docker/crane.
 
-Registries implementing the direct-to-storage upload extension
-(`POST /ext/v1/blobs/uploads` + `/commit`, e.g. Yolean's Cloudflare R2
-registry where the proxy caps request bodies) receive blobs at or above
-`--direct-threshold` (default 8 MiB) via presigned URLs uploaded in
-parallel straight to object storage, with any session-prescribed headers
-(e.g. `x-amz-checksum-sha256` so storage verifies content itself). Other
-registries transparently fall back to standard OCI uploads.
+Registries advertising the `_directpush/v1` extension via OCI extensions
+discovery (`GET /v2/_oci/ext/discover`; spec: PROTOCOL.md (attached) —
+e.g. Yolean's Cloudflare R2 registry where the proxy caps request
+bodies) receive blobs at or above `--direct-threshold`
+(default 8 MiB) via presigned URLs uploaded in parallel straight to
+object storage, with any session-prescribed headers (e.g.
+`x-amz-checksum-sha256` so storage verifies content itself). Detection is
+discovery-only: regular OCI registries are the primary destination and
+get standard OCI uploads exclusively, for all layer sizes — never
+extension-path probes.
 
 ## registry-proxy subcommand
 

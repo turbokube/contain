@@ -3,12 +3,12 @@
 // the layout, never re-serialized (see the digest caveats with
 // remote.WriteIndex noted in pkg/testcases).
 //
-// Blobs at or above Options.ExtThreshold are uploaded through the registry's
-// direct-to-storage extension API (POST /ext/v1/blobs/uploads + commit, as
-// implemented by Yolean's Cloudflare R2 registry) when available: the
-// registry hands out presigned URLs and blob bytes go straight to object
-// storage, bypassing proxy body-size limits. Registries without the
-// extension get standard OCI monolithic blob uploads.
+// Blobs at or above Options.ExtThreshold are uploaded through the
+// _directpush/v1 extension (spec: PROTOCOL.md, attached) when the
+// registry advertises it via OCI extensions discovery: the registry hands
+// out presigned URLs and blob bytes go straight to object storage,
+// bypassing proxy body-size limits. Registries without the extension get
+// standard OCI monolithic blob uploads exclusively, for all blob sizes.
 package ocipush
 
 import (
