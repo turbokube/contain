@@ -129,7 +129,7 @@ func (m *mirrorer) fetchManifest(ctx context.Context, ref string) ([]byte, strin
 		return nil, "", fmt.Errorf("source manifest %s: %w", ref, err)
 	}
 	if res.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("source manifest %s: status %d: %s", ref, res.StatusCode, errorBody(res))
+		return nil, "", statusError(fmt.Sprintf("source manifest %s", ref), res)
 	}
 	defer res.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 32*1024*1024))
@@ -163,7 +163,7 @@ func (m *mirrorer) mirrorBlob(ctx context.Context, d descriptor) error {
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("source blob %s: status %d: %s", d.Digest, res.StatusCode, errorBody(res))
+		return statusError(fmt.Sprintf("source blob %s", d.Digest), res)
 	}
 
 	file, err := stagingFile(m.stagingDir, "contain-mirror-*")

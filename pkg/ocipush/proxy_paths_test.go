@@ -119,3 +119,58 @@ func TestProxyAcceptsNestedRepositoryNames(t *testing.T) {
 		}
 	}
 }
+
+// upstreamStatusFake answers the /v2/ ping like a real registry, so the auth
+// handshake succeeds, then refuses the actual API call with one chosen
+// status. That isolates the proxy's error mapping from the handshake.
+type upstreamStatusFake struct{ status int }
+
+func (f upstreamStatusFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/v2/" || r.URL.Path == "/v2" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(f.status)
+	w.Write([]byte(`{"errors":[{"code":"DENIED","message":"upstream said no"}]}`)) //nolint:errcheck
+}
+
+// The proxy used to flatten every upstream failure to 502 UNKNOWN, which
+// tells a docker client nothing: a credentials problem and a genuinely
+// broken gateway looked identical. A status the upstream chose deliberately
+// is relayed.
+func TestProxyRelaysUpstreamStatus(t *testing.T) {
+	for _, c := range []struct {
+		upstream int
+		want     int
+	}{
+		{http.StatusUnauthorized, http.StatusUnauthorized},
+		{http.StatusForbidden, http.StatusForbidden},
+		{http.StatusTooManyRequests, http.StatusTooManyRequests},
+		// a genuine gateway problem stays a gateway problem
+		{http.StatusInternalServerError, http.StatusBadGateway},
+		// 404 on this route is not a failure at all: the blob simply is not
+		// there to mount, so the proxy opens an ordinary upload session
+		{http.StatusNotFound, http.StatusAccepted},
+	} {
+		upstream := httptest.NewServer(upstreamStatusFake{status: c.upstream})
+		proxy, err := ocipush.NewProxy(strings.TrimPrefix(upstream.URL, "http://"), "",
+			ocipush.Options{Auth: authn.Anonymous})
+		if err != nil {
+			t.Fatal(err)
+		}
+		server := httptest.NewServer(proxy)
+
+		res, err := http.Post(server.URL+"/v2/team/app/blobs/uploads/?mount=sha256:"+strings.Repeat("a", 64),
+			"application/json", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != c.want {
+			t.Errorf("upstream %d: proxy answered %d, want %d", c.upstream, res.StatusCode, c.want)
+		}
+		server.Close()
+		upstream.Close()
+	}
+}

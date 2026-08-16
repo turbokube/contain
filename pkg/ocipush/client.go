@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -114,6 +116,51 @@ func (c *regClient) do(repo string, action string, req *http.Request) (*http.Res
 	return cl.Do(req)
 }
 
+// errRetryable is the target for errors.Is on a failure worth another
+// attempt. It is never returned directly and never appears in a message.
+var errRetryable = errors.New("retryable")
+
+// statusErr is a failed registry response. Building it in one place keeps the
+// message shape and the retry classification out of the eight call sites that
+// used to repeat both.
+type statusErr struct {
+	op     string
+	status int
+	body   string
+}
+
+func (e *statusErr) Error() string {
+	if e.body == "" {
+		return fmt.Sprintf("%s: status %d", e.op, e.status)
+	}
+	return fmt.Sprintf("%s: status %d: %s", e.op, e.status, e.body)
+}
+
+// Is reports retryability from the status: 5xx and 429 may answer differently
+// for the same bytes, while a 4xx means the registry understood the request
+// and refused it, so resending cannot help.
+func (e *statusErr) Is(target error) bool {
+	return target == errRetryable &&
+		(e.status >= 500 || e.status == http.StatusTooManyRequests)
+}
+
+// Status is the response status, for callers that map it onward.
+func (e *statusErr) Status() int { return e.status }
+
+func statusError(op string, res *http.Response) error {
+	return &statusErr{op: op, status: res.StatusCode, body: strings.TrimSpace(errorBody(res))}
+}
+
+// retryable marks a transport-level failure as worth another attempt without
+// changing how it reads.
+type retryable struct{ err error }
+
+func (e retryable) Error() string { return e.err.Error() }
+func (e retryable) Unwrap() error { return e.err }
+func (e retryable) Is(target error) bool {
+	return target == errRetryable
+}
+
 func errorBody(res *http.Response) string {
 	defer res.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(res.Body, 1024))
@@ -141,7 +188,7 @@ func (c *regClient) blobExists(ctx context.Context, repo string, digest string, 
 	case http.StatusNotFound:
 		return false, nil
 	default:
-		return false, fmt.Errorf("blob head %s: unexpected status %d", digest, res.StatusCode)
+		return false, statusError(fmt.Sprintf("blob head %s", digest), res)
 	}
 }
 
@@ -166,9 +213,40 @@ func (c *regClient) pushBlobFile(ctx context.Context, repo string, d descriptor,
 	return c.pushBlobStandard(ctx, repo, d, path)
 }
 
+// standardUploadRetries is how many times a monolithic blob upload is
+// re-attempted. Each attempt opens a fresh session and resends the whole
+// blob, so this trades bandwidth for not failing an entire multi-GB push on
+// one dropped connection. The extension path has its own retry, bounded
+// separately, because there a retry is a new set of presigned URLs.
+const standardUploadRetries = 2
+
 // pushBlobStandard is the OCI distribution-spec monolithic upload:
 // POST to open a session, PUT the whole blob to the returned location.
+//
+// Retried on transport errors and 5xx, which is what a dropped connection
+// partway through a large layer looks like. A 4xx is not retried: the
+// registry understood the request and refused it, so resending the same
+// bytes cannot help.
 func (c *regClient) pushBlobStandard(ctx context.Context, repo string, d descriptor, path string) error {
+	var err error
+	for attempt := 0; attempt <= standardUploadRetries; attempt++ {
+		if attempt > 0 {
+			zap.L().Info("retrying blob upload",
+				zap.String("digest", d.Digest), zap.Int64("size", d.Size),
+				zap.Int("attempt", attempt+1), zap.Error(err))
+		}
+		err = c.putBlobOnce(ctx, repo, d, path)
+		if err == nil {
+			return nil
+		}
+		if ctx.Err() != nil || !errors.Is(err, errRetryable) {
+			return err
+		}
+	}
+	return err
+}
+
+func (c *regClient) putBlobOnce(ctx context.Context, repo string, d descriptor, path string) error {
 	postURL := fmt.Sprintf("%s/v2/%s/blobs/uploads/", c.base, repo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, postURL, nil)
 	if err != nil {
@@ -176,10 +254,10 @@ func (c *regClient) pushBlobStandard(ctx context.Context, repo string, d descrip
 	}
 	res, err := c.do(repo, transport.PushScope, req)
 	if err != nil {
-		return fmt.Errorf("blob upload start: %w", err)
+		return retryable{fmt.Errorf("blob upload start: %w", err)}
 	}
 	if res.StatusCode != http.StatusAccepted {
-		return fmt.Errorf("blob upload start: status %d: %s", res.StatusCode, errorBody(res))
+		return statusError("blob upload start", res)
 	}
 	location := res.Header.Get("Location")
 	res.Body.Close()
@@ -199,12 +277,16 @@ func (c *regClient) pushBlobStandard(ctx context.Context, repo string, d descrip
 	}
 	put.ContentLength = d.Size
 	put.Header.Set("Content-Type", "application/octet-stream")
+	// GetBody lets net/http replay the body on a redirect; without it a
+	// registry that 307s the blob PUT to storage fails on a non-rewindable
+	// reader. Reopening beats seeking: the retry above may reuse this too.
+	put.GetBody = func() (io.ReadCloser, error) { return os.Open(path) }
 	putRes, err := c.do(repo, transport.PushScope, put)
 	if err != nil {
-		return fmt.Errorf("blob put %s: %w", d.Digest, err)
+		return retryable{fmt.Errorf("blob put %s: %w", d.Digest, err)}
 	}
 	if putRes.StatusCode != http.StatusCreated {
-		return fmt.Errorf("blob put %s: status %d: %s", d.Digest, putRes.StatusCode, errorBody(putRes))
+		return statusError(fmt.Sprintf("blob put %s", d.Digest), putRes)
 	}
 	putRes.Body.Close()
 	zap.L().Info("blob pushed", zap.String("digest", d.Digest), zap.Int64("size", d.Size))
@@ -255,7 +337,7 @@ func (c *regClient) putManifest(ctx context.Context, repo string, raw []byte, me
 		return fmt.Errorf("manifest put %s: %w", refOrDigest, err)
 	}
 	if res.StatusCode < 200 || res.StatusCode > 299 {
-		return fmt.Errorf("manifest put %s: status %d: %s", refOrDigest, res.StatusCode, errorBody(res))
+		return statusError(fmt.Sprintf("manifest put %s", refOrDigest), res)
 	}
 	res.Body.Close()
 	zap.L().Info("manifest pushed", zap.String("ref", refOrDigest), zap.String("mediaType", mediaType))

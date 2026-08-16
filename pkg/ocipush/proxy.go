@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -132,6 +133,29 @@ func created(w http.ResponseWriter, repo string, kind string, digest string) {
 	w.WriteHeader(http.StatusCreated)
 }
 
+// upstreamError relays a failure from the upstream registry. A status the
+// upstream chose deliberately — it refused the credentials, or does not have
+// the repository — is passed through rather than flattened to 502, so a
+// client sees "denied" instead of a generic bad-gateway. Everything else
+// really is a gateway problem.
+func upstreamError(w http.ResponseWriter, err error) {
+	var se *statusErr
+	if errors.As(err, &se) {
+		switch se.Status() {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			proxyError(w, se.Status(), "DENIED", err.Error())
+			return
+		case http.StatusNotFound:
+			proxyError(w, se.Status(), "NAME_UNKNOWN", err.Error())
+			return
+		case http.StatusTooManyRequests:
+			proxyError(w, se.Status(), "TOOMANYREQUESTS", err.Error())
+			return
+		}
+	}
+	proxyError(w, http.StatusBadGateway, "UNKNOWN", fmt.Sprintf("upstream: %v", err))
+}
+
 func proxyError(w http.ResponseWriter, status int, code string, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -241,7 +265,7 @@ func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, repo string, tai
 	}
 	res, err := p.c.do(upstreamRepo, transport.PullScope, req)
 	if err != nil {
-		proxyError(w, 502, "UNKNOWN", fmt.Sprintf("upstream: %v", err))
+		upstreamError(w, err)
 		return
 	}
 	defer res.Body.Close()
@@ -271,7 +295,7 @@ func (p *Proxy) manifestPut(w http.ResponseWriter, r *http.Request, repo string,
 	}
 	mediaType := r.Header.Get("Content-Type")
 	if err := p.c.putManifest(r.Context(), p.upstreamRepo(repo), raw, mediaType, ref); err != nil {
-		proxyError(w, 502, "UNKNOWN", err.Error())
+		upstreamError(w, err)
 		return
 	}
 	created(w, repo, "manifests", digestOf(raw))
@@ -282,7 +306,7 @@ func (p *Proxy) uploadStart(w http.ResponseWriter, r *http.Request, repo string)
 	if mount := r.URL.Query().Get("mount"); mount != "" {
 		exists, err := p.c.blobExists(r.Context(), p.upstreamRepo(repo), mount, transport.PushScope)
 		if err != nil {
-			proxyError(w, 502, "UNKNOWN", err.Error())
+			upstreamError(w, err)
 			return
 		}
 		if exists {
@@ -396,7 +420,7 @@ func (p *Proxy) uploadContinue(w http.ResponseWriter, r *http.Request, repo stri
 			descriptor{Digest: digest, Size: session.size}, session.file.Name())
 		drop()
 		if err != nil {
-			proxyError(w, 502, "UNKNOWN", fmt.Sprintf("upstream: %v", err))
+			upstreamError(w, err)
 			return
 		}
 		created(w, repo, "blobs", digest)
