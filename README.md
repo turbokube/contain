@@ -13,6 +13,9 @@ The CLI now has sub-commands (migrated to [cobra](https://github.com/spf13/cobra
 
 - `contain build` – existing build/append functionality (also the default when you invoke just `contain ...` for backwards compatibility).
 - `contain sbom` – experimental stub that will generate a Software Bill of Materials from a build metadata file in future versions. Currently it just echoes the provided `--build-metadata` path.
+- `contain push` – push an OCI image layout to a registry with digests preserved verbatim (see below).
+- `contain registry-proxy` – localhost registry endpoint forwarding to an upstream registry, so stock docker tooling can push any layer size (see below).
+- `contain mirror` – copy an image between registries preserving digests, like `crane cp` (see below).
 
 Examples (old style still works):
 
@@ -20,7 +23,76 @@ Examples (old style still works):
 contain -x -b busybox:latest --file-output out.json
 contain build -x -b busybox:latest --file-output out.json
 contain sbom --build-metadata out/localdir.buildctl.json
+contain push out/oci-layout registry.example.com/app/name:tag
+contain mirror ghcr.io/org/app:v1 registry.example.com/app/name:v1
 ```
+
+## push subcommand
+
+`contain push` pushes an OCI image layout directory, e.g. from
+`docker buildx build -o type=oci,tar=false,dest=DIR`, to a registry.
+Manifests and blobs are transferred as raw bytes so all digests are
+preserved (unlike `remote.WriteIndex` from a layout, see pkg/testcases
+caveats). Credentials resolve like docker/crane.
+
+Registries advertising the `_directpush/v1` extension via OCI extensions
+discovery (`GET /v2/_oci/ext/discover`; spec: PROTOCOL.md (attached) —
+e.g. Yolean's Cloudflare R2 registry where the proxy caps request
+bodies) receive blobs at or above `--direct-threshold`
+(default 8 MiB) via presigned URLs uploaded in parallel straight to
+object storage, with any session-prescribed headers (e.g.
+`x-amz-checksum-sha256` so storage verifies content itself). Detection is
+discovery-only: regular OCI registries are the primary destination and
+get standard OCI uploads exclusively, for all layer sizes — never
+extension-path probes.
+
+## registry-proxy subcommand
+
+`contain registry-proxy` serves an unauthenticated OCI registry on
+localhost that forwards to an upstream registry, for docker contexts
+where builds should push with stock tooling regardless of upstream
+upload limits:
+
+```
+docker run -d -v $HOME/.docker:/dockercfg:ro -e DOCKER_CONFIG=/dockercfg \
+  -p 127.0.0.1:5000:5000 ghcr.io/yolean/contain \
+  registry-proxy --upstream registry.example.com --addr 0.0.0.0:5000
+docker push localhost:5000/app/name:tag
+```
+
+Blob uploads are staged to disk (unbounded size), digest-verified, then
+re-uploaded like `contain push` (direct-to-storage for large blobs).
+Staging goes to `--staging-dir`, else `$CONTAIN_STAGING_DIR`, else
+`$CONTAIN_CACHE_DIR/staging`, else the system temp dir. Set one of these
+when running in a container: `/tmp` is frequently tmpfs, so staging a
+multi-GB layer there is charged to memory and gets the process
+OOM-killed.
+Pulls and manifest reads pass through with upstream credentials from the
+docker keychain. Only bind to localhost or trusted networks — the proxy
+itself does not authenticate clients. Note that docker configs using
+`credsStore` (Docker Desktop) resolve via the host keychain, which is not
+available inside a container; mount a plain `config.json` with `auths`.
+
+## mirror subcommand
+
+`contain mirror` copies an image, single manifest or full index, from one
+registry to another. Manifests and blobs transfer as raw bytes and every
+node is digest-verified before it is pushed, so even a plain-http source
+cannot inject content under a wrong digest. The source may pin a digest
+(`repo:tag@sha256:...` or `repo@sha256:...`), which is then checked
+against what the source actually served.
+
+```
+contain mirror ghcr.io/org/app:v1 registry.example.com/app/name:v1
+contain mirror --src-plain-http registry.internal:5000/app:v1 registry.example.com/app/name:v1
+```
+
+The push side uses the destination's direct-to-storage extension for
+large blobs when the destination advertises it, exactly as `contain push`
+does. Blobs already present at the destination are skipped, so
+re-mirroring is cheap. Each blob is staged to disk while it is verified;
+see `--staging-dir` under registry-proxy for where that goes and why it
+matters in a container.
 
 ## sbom subcommand
 
