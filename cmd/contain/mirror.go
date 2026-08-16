@@ -29,6 +29,7 @@ when available (see contain push). Credentials resolve like docker/crane.`,
 	c.Flags().BoolVar(&mirrorSrcPlainHTTP, "src-plain-http", false,
 		"use plain http for the source registry (e.g. cluster-internal registries)")
 	addDirectUploadFlags(c, &mirrorDstOptions, "destination")
+	addStagingFlag(c, &mirrorDstOptions)
 	return c
 }
 

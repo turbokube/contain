@@ -60,8 +60,13 @@ docker run -d -v $HOME/.docker:/dockercfg:ro -e DOCKER_CONFIG=/dockercfg \
 docker push localhost:5000/app/name:tag
 ```
 
-Blob uploads are staged to temp files (unbounded size), digest-verified,
-then re-uploaded like `contain push` (direct-to-storage for large blobs).
+Blob uploads are staged to disk (unbounded size), digest-verified, then
+re-uploaded like `contain push` (direct-to-storage for large blobs).
+Staging goes to `--staging-dir`, else `$CONTAIN_STAGING_DIR`, else
+`$CONTAIN_CACHE_DIR/staging`, else the system temp dir. Set one of these
+when running in a container: `/tmp` is frequently tmpfs, so staging a
+multi-GB layer there is charged to memory and gets the process
+OOM-killed.
 Pulls and manifest reads pass through with upstream credentials from the
 docker keychain. Only bind to localhost or trusted networks — the proxy
 itself does not authenticate clients. Note that docker configs using
@@ -85,7 +90,9 @@ contain mirror --src-plain-http registry.internal:5000/app:v1 registry.example.c
 The push side uses the destination's direct-to-storage extension for
 large blobs when the destination advertises it, exactly as `contain push`
 does. Blobs already present at the destination are skipped, so
-re-mirroring is cheap.
+re-mirroring is cheap. Each blob is staged to disk while it is verified;
+see `--staging-dir` under registry-proxy for where that goes and why it
+matters in a container.
 
 ## sbom subcommand
 

@@ -17,3 +17,12 @@ func addDirectUploadFlags(c *cobra.Command, opts *ocipush.Options, target string
 	c.Flags().Int64Var(&opts.PartSize, "part-size", 0,
 		fmt.Sprintf("multipart part size in bytes to propose to the %s (0 = registry default)", target))
 }
+
+// addStagingFlag registers where blobs are staged on disk, for the commands
+// that stage them. Worth a flag rather than only an env var because the
+// default, the system temp dir, is tmpfs in many container images: staging a
+// multi-GB layer there is charged to memory.
+func addStagingFlag(c *cobra.Command, opts *ocipush.Options) {
+	c.Flags().StringVar(&opts.StagingDir, "staging-dir", "",
+		"directory to stage blobs in (default $CONTAIN_STAGING_DIR, $CONTAIN_CACHE_DIR/staging, or the system temp dir)")
+}

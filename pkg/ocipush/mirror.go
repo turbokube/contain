@@ -61,7 +61,9 @@ func Mirror(ctx context.Context, srcRef string, dstRef string, opts MirrorOption
 	m := &mirrorer{
 		src: srcClient, dst: dstClient,
 		srcRepo: src.Context().RepositoryStr(), dstRepo: dst.Context().RepositoryStr(),
+		stagingDir: opts.Dst.StagingDir,
 	}
+	logStagingDir(m.stagingDir)
 
 	raw, mediaType, err := m.fetchManifest(ctx, src.Identifier())
 	if err != nil {
@@ -79,10 +81,11 @@ func Mirror(ctx context.Context, srcRef string, dstRef string, opts MirrorOption
 }
 
 type mirrorer struct {
-	src     *regClient
-	dst     *regClient
-	srcRepo string
-	dstRepo string
+	src        *regClient
+	dst        *regClient
+	srcRepo    string
+	dstRepo    string
+	stagingDir string
 }
 
 // pushTree pushes children depth-first, then the manifest itself.
@@ -163,7 +166,7 @@ func (m *mirrorer) mirrorBlob(ctx context.Context, d descriptor) error {
 		return fmt.Errorf("source blob %s: status %d: %s", d.Digest, res.StatusCode, errorBody(res))
 	}
 
-	file, err := os.CreateTemp("", "contain-mirror-*")
+	file, err := stagingFile(m.stagingDir, "contain-mirror-*")
 	if err != nil {
 		return err
 	}

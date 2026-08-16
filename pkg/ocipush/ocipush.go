@@ -54,6 +54,11 @@ type Options struct {
 	PartSize int64
 	// Transport overrides the default http transport.
 	Transport http.RoundTripper
+	// StagingDir is where blobs are staged on disk before being re-uploaded,
+	// by Mirror and by the registry-proxy. Empty resolves via
+	// CONTAIN_STAGING_DIR, then CONTAIN_CACHE_DIR/staging, then the system
+	// temp dir. Push does not stage: it reads from the layout in place.
+	StagingDir string
 }
 
 // descriptor is the subset of an OCI content descriptor we need for walking.

@@ -46,6 +46,7 @@ does not authenticate clients.`,
 	c.Flags().StringVar(&proxyUpstream, "upstream", "", "upstream registry host (required)")
 	c.Flags().StringVar(&proxyPrefix, "prefix", "", "repository name prefix to add upstream, must end with /")
 	addDirectUploadFlags(c, &proxyOptions, "upstream")
+	addStagingFlag(c, &proxyOptions)
 	cobra.CheckErr(c.MarkFlagRequired("upstream"))
 	return c
 }

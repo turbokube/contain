@@ -31,8 +31,9 @@ import (
 // treat local access as trusted, like docker's own localhost registry
 // convention.
 type Proxy struct {
-	c      *regClient
-	prefix string
+	c          *regClient
+	prefix     string
+	stagingDir string
 
 	mu       sync.Mutex
 	sessions map[string]*uploadSession
@@ -110,7 +111,13 @@ func NewProxy(upstreamHost string, prefix string, opts Options) (*Proxy, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &Proxy{c: c, prefix: prefix, sessions: map[string]*uploadSession{}}, nil
+	logStagingDir(opts.StagingDir)
+	return &Proxy{
+		c:          c,
+		prefix:     prefix,
+		stagingDir: opts.StagingDir,
+		sessions:   map[string]*uploadSession{},
+	}, nil
 }
 
 func (p *Proxy) upstreamRepo(repo string) string {
@@ -284,7 +291,7 @@ func (p *Proxy) uploadStart(w http.ResponseWriter, r *http.Request, repo string)
 		}
 	}
 
-	file, err := os.CreateTemp("", "contain-proxy-upload-*")
+	file, err := stagingFile(p.stagingDir, "contain-proxy-upload-*")
 	if err != nil {
 		proxyError(w, 500, "UNKNOWN", err.Error())
 		return
@@ -305,6 +312,12 @@ func (p *Proxy) uploadStart(w http.ResponseWriter, r *http.Request, repo string)
 	w.Header().Set("Docker-Upload-UUID", id)
 	w.Header().Set("Range", "0-0")
 	w.WriteHeader(http.StatusAccepted)
+}
+
+func (p *Proxy) expireIdleSessions() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.expireIdleSessionsLocked()
 }
 
 func (p *Proxy) expireIdleSessionsLocked() {
@@ -329,6 +342,10 @@ func (p *Proxy) uploadContinue(w http.ResponseWriter, r *http.Request, repo stri
 	session.mu.Lock()
 	defer session.mu.Unlock()
 	session.lastUsed = time.Now()
+	// also sweep here: uploadStart used to be the only trigger, so a client
+	// killed mid-push left an open fd and a partial multi-GB staging file
+	// until somebody started another upload, which on an idle proxy is never
+	defer p.expireIdleSessions()
 
 	drop := func() {
 		session.file.Close()           //nolint:errcheck
