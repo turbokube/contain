@@ -90,8 +90,17 @@ func pathPartOr400(w http.ResponseWriter, value string, re *regexp.Regexp, code 
 // non-empty, is prepended to every repository name (use for registries that
 // namespace teams/projects); it must end with "/".
 func NewProxy(upstreamHost string, prefix string, opts Options) (*Proxy, error) {
-	if prefix != "" && !strings.HasSuffix(prefix, "/") {
-		return nil, fmt.Errorf("prefix must end with /: %q", prefix)
+	if prefix != "" {
+		if !strings.HasSuffix(prefix, "/") {
+			return nil, fmt.Errorf("prefix must end with /: %q", prefix)
+		}
+		// The prefix becomes part of the repository name sent upstream, both
+		// in URLs and in the _directpush repository field, which registries
+		// validate against this same grammar. Failing here beats a
+		// NAME_INVALID on every push.
+		if !proxyNameRe.MatchString(strings.TrimSuffix(prefix, "/")) {
+			return nil, fmt.Errorf("prefix is not a valid repository name path: %q", prefix)
+		}
 	}
 	reg, err := name.NewRegistry(upstreamHost)
 	if err != nil {

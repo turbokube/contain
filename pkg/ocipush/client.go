@@ -13,6 +13,7 @@ import (
 	"slices"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -21,9 +22,18 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const partUploadConcurrency = 4
+const (
+	partUploadConcurrency = 4
+	// extSessionRetries is how many fresh sessions to take after presigned
+	// URLs expire mid-upload. Sessions are not resumable, so each retry
+	// re-uploads every part.
+	extSessionRetries = 1
+)
 
-var errExtUnsupported = errors.New("registry does not support the direct-upload extension")
+var (
+	errExtUnsupported = errors.New("registry does not support the direct-upload extension")
+	errExtExpired     = errors.New("presigned upload urls expired")
+)
 
 // regClient talks to one upstream registry; repository is per call so the
 // registry-proxy can serve many repos through one client.
@@ -66,10 +76,12 @@ type extDiscoverResponse struct {
 // positively advertise it get standard OCI uploads exclusively — no probing
 // of extension paths (PROTOCOL.md, attached).
 //
-// repo only selects the token scope. Discovery is a registry-level endpoint,
-// but on a token-auth registry it still sits behind a challenge, and the
-// extension endpoints are outside the /v2/<name>/ namespace the scope grammar
-// covers, so we reuse the scope of the repository we are about to push to.
+// repo only selects the token scope. Registries SHOULD serve discovery
+// unauthenticated and this one does, but clients must tolerate a challenge,
+// and the credentials to answer it with are the ones the extension endpoints
+// use: repository:<repo>:push,pull. Sending that token unconditionally covers
+// both cases in one round trip, and it is a client we need for the push
+// anyway.
 func (c *regClient) directpushSupported(ctx context.Context, repo string) bool {
 	c.discoverOnce.Do(func() {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/v2/_oci/ext/discover", nil)
@@ -294,9 +306,16 @@ type extStartResponse struct {
 	UploadID string   `json:"uploadId"`
 	PartSize int64    `json:"partSize"`
 	Urls     []string `json:"urls"`
+	// ExpiresSeconds is the presigned URL validity, measured from session
+	// creation. Zero or absent means the registry states no deadline.
+	ExpiresSeconds int64 `json:"expiresSeconds"`
 	// Headers must be sent on every part PUT; the registry uses this to pin
 	// e.g. x-amz-checksum-sha256 so object storage verifies content itself.
 	Headers map[string]string `json:"headers"`
+
+	// deadline is ExpiresSeconds resolved against the local clock, taken
+	// before the request so it never overestimates the remaining validity.
+	deadline time.Time
 }
 
 type extPart struct {
@@ -307,44 +326,90 @@ type extPart struct {
 // pushBlobExt uploads via the registry's direct-to-storage extension:
 // presigned part URLs, parallel PUTs to object storage, then a commit call
 // that has the registry verify the digest server-side.
+//
+// Presigned URLs expire. Sessions are not resumable across that, so on expiry
+// the whole session is re-requested and every part re-uploaded (PROTOCOL.md,
+// "Upload session"). One retry: a second expiry means the blob cannot be
+// moved inside the registry's window and a bigger part count or a different
+// path is the answer, not more retries.
 func (c *regClient) pushBlobExt(ctx context.Context, repo string, d descriptor, path string) error {
-	start := map[string]any{"digest": d.Digest, "size": d.Size}
-	if c.partSize > 0 {
-		start["partSize"] = c.partSize
-	}
-	session := extStartResponse{}
-	res, err := c.postJSON(ctx, repo, "/v2/_directpush/v1/uploads", start)
-	if err != nil {
-		return fmt.Errorf("direct upload start: %w", err)
-	}
-	// The extension contract is 200 + a JSON session. Anything else that isn't
-	// a hard error means the registry doesn't implement the extension — some
-	// registries route unknown paths loosely (e.g. answer 202 to any
-	// */blobs/uploads), so detection must be contract-based, not just 404.
-	switch {
-	case res.StatusCode == http.StatusOK:
-		err := json.NewDecoder(res.Body).Decode(&session)
-		res.Body.Close()
-		if err != nil || (!session.Exists && (len(session.Urls) == 0 || session.PartSize <= 0)) {
-			return errExtUnsupported
-		}
-	case res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden ||
-		res.StatusCode == http.StatusBadRequest || res.StatusCode >= 500:
-		return fmt.Errorf("direct upload start: status %d: %s", res.StatusCode, errorBody(res))
-	default:
-		res.Body.Close()
-		return errExtUnsupported
-	}
-	if session.Exists {
-		return nil
-	}
-
 	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
+	for attempt := 0; ; attempt++ {
+		session, err := c.extStartSession(ctx, repo, d)
+		if err != nil {
+			return err
+		}
+		if session.Exists {
+			return nil
+		}
+		parts, err := c.extUploadParts(ctx, session, d, f)
+		if err != nil {
+			if errors.Is(err, errExtExpired) && attempt < extSessionRetries {
+				zap.L().Info("direct upload session expired, requesting a fresh one",
+					zap.String("digest", d.Digest),
+					zap.Int64("expiresSeconds", session.ExpiresSeconds))
+				continue
+			}
+			return fmt.Errorf("direct upload %s: %w", d.Digest, err)
+		}
+		return c.extCommit(ctx, repo, d, session, parts)
+	}
+}
+
+// extStartSession opens an upload session, or reports errExtUnsupported when
+// the response does not meet the extension contract.
+func (c *regClient) extStartSession(ctx context.Context, repo string, d descriptor) (*extStartResponse, error) {
+	start := map[string]any{"repository": repo, "digest": d.Digest, "size": d.Size}
+	if c.partSize > 0 {
+		start["partSize"] = c.partSize
+	}
+	requested := time.Now()
+	res, err := c.postJSON(ctx, repo, "/v2/_directpush/v1/uploads", start)
+	if err != nil {
+		return nil, fmt.Errorf("direct upload start: %w", err)
+	}
+	session := &extStartResponse{}
+	// The extension contract is 200 + a JSON session. Anything else that isn't
+	// a hard error means the registry doesn't implement the extension — some
+	// registries route unknown paths loosely (e.g. answer 202 to any
+	// */blobs/uploads), so detection must be contract-based, not just 404.
+	switch {
+	case res.StatusCode == http.StatusOK:
+		err := json.NewDecoder(res.Body).Decode(session)
+		res.Body.Close()
+		if err != nil || (!session.Exists && (len(session.Urls) == 0 || session.PartSize <= 0)) {
+			return nil, errExtUnsupported
+		}
+	case res.StatusCode == http.StatusNotImplemented:
+		// Advertised but not operational. The spec uses 501 UNSUPPORTED for a
+		// blob outside what the registry's current mode can take, and a
+		// registry whose discovery document does not track its own runtime
+		// capability will answer it for every session. Standard upload is a
+		// better answer than failing the push either way, but the reason
+		// would otherwise be lost, so say it once.
+		zap.L().Warn("registry declined the direct upload session, falling back to standard upload",
+			zap.String("digest", d.Digest), zap.Int64("size", d.Size),
+			zap.String("response", errorBody(res)))
+		return nil, errExtUnsupported
+	case res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden ||
+		res.StatusCode == http.StatusBadRequest || res.StatusCode >= 500:
+		return nil, fmt.Errorf("direct upload start: status %d: %s", res.StatusCode, errorBody(res))
+	default:
+		res.Body.Close()
+		return nil, errExtUnsupported
+	}
+	if session.ExpiresSeconds > 0 {
+		session.deadline = requested.Add(time.Duration(session.ExpiresSeconds) * time.Second)
+	}
+	return session, nil
+}
+
+func (c *regClient) extUploadParts(ctx context.Context, session *extStartResponse, d descriptor, f *os.File) ([]extPart, error) {
 	parts := make([]extPart, len(session.Urls))
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(partUploadConcurrency)
@@ -355,12 +420,21 @@ func (c *regClient) pushBlobExt(ctx context.Context, repo string, d descriptor, 
 			if length <= 0 {
 				return fmt.Errorf("part %d: no data at offset %d", i+1, offset)
 			}
+			// A part must begin before the URLs expire; one already in flight
+			// may finish after. Checking up front skips a transfer storage is
+			// certain to reject.
+			if !session.deadline.IsZero() && time.Now().After(session.deadline) {
+				return fmt.Errorf("part %d: %w", i+1, errExtExpired)
+			}
 			req, err := http.NewRequestWithContext(gctx, http.MethodPut, partURL,
 				io.NewSectionReader(f, offset, length))
 			if err != nil {
 				return err
 			}
 			req.ContentLength = length
+			// Exactly the prescribed headers and nothing else. A presigned
+			// signature covers a fixed header set, so an extra one (any
+			// x-amz-*, or Content-Type on some backends) invalidates it.
 			for k, v := range session.Headers {
 				req.Header.Set(k, v)
 			}
@@ -368,6 +442,10 @@ func (c *regClient) pushBlobExt(ctx context.Context, repo string, d descriptor, 
 			res, err := c.raw.Do(req)
 			if err != nil {
 				return fmt.Errorf("part %d: %w", i+1, err)
+			}
+			if res.StatusCode == http.StatusForbidden {
+				// how object storage reports a presigned URL past its lifetime
+				return fmt.Errorf("part %d: %s: %w", i+1, errorBody(res), errExtExpired)
 			}
 			if res.StatusCode < 200 || res.StatusCode > 299 {
 				return fmt.Errorf("part %d: status %d: %s", i+1, res.StatusCode, errorBody(res))
@@ -380,10 +458,13 @@ func (c *regClient) pushBlobExt(ctx context.Context, repo string, d descriptor, 
 		})
 	}
 	if err := g.Wait(); err != nil {
-		return fmt.Errorf("direct upload %s: %w", d.Digest, err)
+		return nil, err
 	}
+	return parts, nil
+}
 
-	commit := map[string]any{"digest": d.Digest, "size": d.Size, "key": session.Key}
+func (c *regClient) extCommit(ctx context.Context, repo string, d descriptor, session *extStartResponse, parts []extPart) error {
+	commit := map[string]any{"repository": repo, "digest": d.Digest, "size": d.Size, "key": session.Key}
 	if session.UploadID != "" {
 		commit["uploadId"] = session.UploadID
 		commit["parts"] = parts

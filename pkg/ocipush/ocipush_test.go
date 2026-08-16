@@ -146,6 +146,11 @@ type extFake struct {
 	staged    map[string]map[int][]byte // key -> part number -> bytes
 	uploads   int
 	commits   int
+	// expiresSeconds is advertised on the session; 0 omits the field.
+	expiresSeconds int64
+	// extraHeaders are prescribed on top of the checksum header, to stand in
+	// for the header set a presigned signature covers.
+	extraHeaders map[string]string
 }
 
 const fakePartSize = int64(1000)
@@ -161,11 +166,21 @@ func (f *extFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 	case r.Method == http.MethodPost && r.URL.Path == "/v2/_directpush/v1/uploads":
 		var body struct {
-			Digest string `json:"digest"`
-			Size   int64  `json:"size"`
+			Repository string `json:"repository"`
+			Digest     string `json:"digest"`
+			Size       int64  `json:"size"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, err.Error(), 400)
+			return
+		}
+		if body.Repository == "" {
+			// Models a registry with per-repository authorization, which MUST
+			// reject the absence of the field. It is SHOULD-send in v1, so
+			// this pins our client's behaviour rather than the protocol's:
+			// always sending it is what keeps a client compatible with both
+			// kinds of registry, and with a future v2 that requires it.
+			http.Error(w, "repository field required by this registry", 400)
 			return
 		}
 		key := "staging/" + body.Digest + "/fake"
@@ -182,11 +197,19 @@ func (f *extFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.staged[key] = map[int][]byte{}
 		f.uploads++
 		f.mu.Unlock()
-		json.NewEncoder(w).Encode(map[string]any{
+		headers := map[string]string{"x-contain-test-checksum": body.Digest}
+		for k, v := range f.extraHeaders {
+			headers[k] = v
+		}
+		session := map[string]any{
 			"digest": body.Digest, "key": key, "uploadId": uploadID,
 			"partSize": fakePartSize, "urls": urls,
-			"headers": map[string]string{"x-contain-test-checksum": body.Digest},
-		})
+			"headers": headers,
+		}
+		if f.expiresSeconds > 0 {
+			session["expiresSeconds"] = f.expiresSeconds
+		}
+		json.NewEncoder(w).Encode(session)
 	case r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/stage/"):
 		// session-prescribed headers must arrive on every part PUT
 		if !strings.HasPrefix(r.Header.Get("x-contain-test-checksum"), "sha256:") {
@@ -204,12 +227,17 @@ func (f *extFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 	case r.Method == http.MethodPost && r.URL.Path == "/v2/_directpush/v1/commit":
 		var body struct {
-			Digest string `json:"digest"`
-			Size   int64  `json:"size"`
-			Key    string `json:"key"`
+			Repository string `json:"repository"`
+			Digest     string `json:"digest"`
+			Size       int64  `json:"size"`
+			Key        string `json:"key"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, err.Error(), 400)
+			return
+		}
+		if body.Repository == "" {
+			http.Error(w, "repository field required by this registry", 400)
 			return
 		}
 		f.mu.Lock()
