@@ -3,7 +3,6 @@ package ocipush
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
@@ -27,10 +27,26 @@ var errExtUnsupported = errors.New("registry does not support the direct-upload 
 
 // regClient talks to one upstream registry; repository is per call so the
 // registry-proxy can serve many repos through one client.
+//
+// Requests go through go-containerregistry's transport, which performs the
+// distribution-spec auth handshake: ping, read the WWW-Authenticate challenge,
+// and exchange credentials for a scoped bearer token where the registry asks
+// for one. Every hosted registry (Docker Hub, GHCR, GCR, ECR, Quay) requires
+// that; a static Authorization header only works against registries that take
+// Basic auth directly. Tokens are scoped per repository and action, so
+// authenticated clients are built lazily and cached per scope.
 type regClient struct {
-	base         string // scheme://host of the registry
-	authHeader   string
-	http         *http.Client
+	base string // scheme://host of the registry
+	reg  name.Registry
+	auth authn.Authenticator
+	// inner is the unauthenticated base transport. Presigned storage URLs must
+	// use it directly: their signature covers no Authorization header.
+	inner http.RoundTripper
+	raw   *http.Client
+
+	mu      sync.Mutex
+	clients map[string]*http.Client
+
 	discoverOnce sync.Once
 	extSupported bool
 	extDisabled  atomic.Bool
@@ -49,13 +65,18 @@ type extDiscoverResponse struct {
 // extensions discovery endpoint, once per registry. Registries that do not
 // positively advertise it get standard OCI uploads exclusively — no probing
 // of extension paths (PROTOCOL.md, attached).
-func (c *regClient) directpushSupported(ctx context.Context) bool {
+//
+// repo only selects the token scope. Discovery is a registry-level endpoint,
+// but on a token-auth registry it still sits behind a challenge, and the
+// extension endpoints are outside the /v2/<name>/ namespace the scope grammar
+// covers, so we reuse the scope of the repository we are about to push to.
+func (c *regClient) directpushSupported(ctx context.Context, repo string) bool {
 	c.discoverOnce.Do(func() {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/v2/_oci/ext/discover", nil)
 		if err != nil {
 			return
 		}
-		res, err := c.do(req)
+		res, err := c.do(repo, transport.PushScope, req)
 		if err != nil {
 			zap.L().Debug("extension discovery failed", zap.Error(err))
 			return
@@ -92,45 +113,62 @@ func newRegClient(reg name.Registry, opts Options) (*regClient, error) {
 			return nil, fmt.Errorf("resolve credentials for %s: %w", reg.RegistryStr(), err)
 		}
 	}
-	authConfig, err := auth.Authorization()
-	if err != nil {
-		return nil, fmt.Errorf("authorization: %w", err)
-	}
-	header := ""
-	switch {
-	case authConfig.Username != "" || authConfig.Password != "":
-		header = "Basic " + base64.StdEncoding.EncodeToString(
-			[]byte(authConfig.Username+":"+authConfig.Password))
-	case authConfig.Auth != "":
-		header = "Basic " + authConfig.Auth
-	case authConfig.RegistryToken != "":
-		header = "Bearer " + authConfig.RegistryToken
-	}
 
 	threshold := opts.ExtThreshold
 	if threshold == 0 {
 		threshold = DefaultExtThreshold
 	}
-	client := http.DefaultClient
-	if opts.Transport != nil {
-		client = &http.Client{Transport: opts.Transport}
+	inner := opts.Transport
+	if inner == nil {
+		inner = http.DefaultTransport
 	}
 	return &regClient{
 		base:         fmt.Sprintf("%s://%s", reg.Scheme(), reg.RegistryStr()),
-		authHeader:   header,
-		http:         client,
+		reg:          reg,
+		auth:         auth,
+		inner:        inner,
+		raw:          &http.Client{Transport: inner},
+		clients:      map[string]*http.Client{},
 		extThreshold: threshold,
 		partSize:     opts.PartSize,
 	}, nil
 }
 
-// do sends a request to the registry with credentials attached. Presigned
-// storage URLs must NOT go through this (their signature covers no auth).
-func (c *regClient) do(req *http.Request) (*http.Response, error) {
-	if c.authHeader != "" {
-		req.Header.Set("Authorization", c.authHeader)
+// client returns an http.Client authenticated for one repository and action,
+// performing the auth handshake on first use of each scope and caching the
+// result. action is transport.PullScope or transport.PushScope.
+func (c *regClient) client(ctx context.Context, repo string, action string) (*http.Client, error) {
+	scope := c.reg.Repo(repo).Scope(action)
+	c.mu.Lock()
+	cached, ok := c.clients[scope]
+	c.mu.Unlock()
+	if ok {
+		return cached, nil
 	}
-	return c.http.Do(req)
+	tr, err := transport.NewWithContext(ctx, c.reg, c.auth, c.inner, []string{scope})
+	if err != nil {
+		return nil, fmt.Errorf("registry auth for %s: %w", scope, err)
+	}
+	built := &http.Client{Transport: tr}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// another goroutine may have won the race; one client per scope
+	if existing, ok := c.clients[scope]; ok {
+		return existing, nil
+	}
+	c.clients[scope] = built
+	return built, nil
+}
+
+// do sends a request to the registry authenticated for repo and action.
+// Presigned storage URLs must NOT go through this: use c.raw, so no
+// Authorization header invalidates the signature.
+func (c *regClient) do(repo string, action string, req *http.Request) (*http.Response, error) {
+	cl, err := c.client(req.Context(), repo, action)
+	if err != nil {
+		return nil, err
+	}
+	return cl.Do(req)
 }
 
 func errorBody(res *http.Response) string {
@@ -145,7 +183,7 @@ func (c *regClient) blobExists(ctx context.Context, repo string, digest string) 
 	if err != nil {
 		return false, err
 	}
-	res, err := c.do(req)
+	res, err := c.do(repo, transport.PullScope, req)
 	if err != nil {
 		return false, fmt.Errorf("blob head %s: %w", digest, err)
 	}
@@ -171,7 +209,7 @@ func (c *regClient) pushBlobFile(ctx context.Context, repo string, d descriptor,
 		zap.L().Debug("blob exists", zap.String("digest", d.Digest), zap.Int64("size", d.Size))
 		return nil
 	}
-	if !c.extDisabled.Load() && d.Size >= c.extThreshold && c.directpushSupported(ctx) {
+	if !c.extDisabled.Load() && d.Size >= c.extThreshold && c.directpushSupported(ctx, repo) {
 		err := c.pushBlobExt(ctx, repo, d, path)
 		if err == nil {
 			return nil
@@ -194,7 +232,7 @@ func (c *regClient) pushBlobStandard(ctx context.Context, repo string, d descrip
 	if err != nil {
 		return err
 	}
-	res, err := c.do(req)
+	res, err := c.do(repo, transport.PushScope, req)
 	if err != nil {
 		return fmt.Errorf("blob upload start: %w", err)
 	}
@@ -219,7 +257,7 @@ func (c *regClient) pushBlobStandard(ctx context.Context, repo string, d descrip
 	}
 	put.ContentLength = d.Size
 	put.Header.Set("Content-Type", "application/octet-stream")
-	putRes, err := c.do(put)
+	putRes, err := c.do(repo, transport.PushScope, put)
 	if err != nil {
 		return fmt.Errorf("blob put %s: %w", d.Digest, err)
 	}
@@ -275,7 +313,7 @@ func (c *regClient) pushBlobExt(ctx context.Context, repo string, d descriptor, 
 		start["partSize"] = c.partSize
 	}
 	session := extStartResponse{}
-	res, err := c.postJSON(ctx, "/v2/_directpush/v1/uploads", start)
+	res, err := c.postJSON(ctx, repo, "/v2/_directpush/v1/uploads", start)
 	if err != nil {
 		return fmt.Errorf("direct upload start: %w", err)
 	}
@@ -326,8 +364,8 @@ func (c *regClient) pushBlobExt(ctx context.Context, repo string, d descriptor, 
 			for k, v := range session.Headers {
 				req.Header.Set(k, v)
 			}
-			// presigned URL: no registry credentials, c.http directly
-			res, err := c.http.Do(req)
+			// presigned URL: no registry credentials, raw transport
+			res, err := c.raw.Do(req)
 			if err != nil {
 				return fmt.Errorf("part %d: %w", i+1, err)
 			}
@@ -350,7 +388,7 @@ func (c *regClient) pushBlobExt(ctx context.Context, repo string, d descriptor, 
 		commit["uploadId"] = session.UploadID
 		commit["parts"] = parts
 	}
-	commitRes, err := c.postJSON(ctx, "/v2/_directpush/v1/commit", commit)
+	commitRes, err := c.postJSON(ctx, repo, "/v2/_directpush/v1/commit", commit)
 	if err != nil {
 		return fmt.Errorf("direct upload commit: %w", err)
 	}
@@ -363,7 +401,7 @@ func (c *regClient) pushBlobExt(ctx context.Context, repo string, d descriptor, 
 	return nil
 }
 
-func (c *regClient) postJSON(ctx context.Context, path string, body any) (*http.Response, error) {
+func (c *regClient) postJSON(ctx context.Context, repo string, path string, body any) (*http.Response, error) {
 	b, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -373,7 +411,7 @@ func (c *regClient) postJSON(ctx context.Context, path string, body any) (*http.
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	return c.do(req)
+	return c.do(repo, transport.PushScope, req)
 }
 
 func (c *regClient) putManifest(ctx context.Context, repo string, raw []byte, mediaType string, refOrDigest string) error {
@@ -383,7 +421,7 @@ func (c *regClient) putManifest(ctx context.Context, repo string, raw []byte, me
 		return err
 	}
 	req.Header.Set("Content-Type", mediaType)
-	res, err := c.do(req)
+	res, err := c.do(repo, transport.PushScope, req)
 	if err != nil {
 		return fmt.Errorf("manifest put %s: %w", refOrDigest, err)
 	}

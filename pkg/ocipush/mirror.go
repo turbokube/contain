@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 	"go.uber.org/zap"
 )
 
@@ -130,7 +131,7 @@ func (m *mirrorer) fetchManifest(ctx context.Context, ref string) ([]byte, strin
 		return nil, "", err
 	}
 	req.Header.Set("Accept", manifestAccept)
-	res, err := m.src.do(req)
+	res, err := m.src.do(m.srcRepo, transport.PullScope, req)
 	if err != nil {
 		return nil, "", fmt.Errorf("source manifest %s: %w", ref, err)
 	}
@@ -163,7 +164,7 @@ func (m *mirrorer) mirrorBlob(ctx context.Context, d descriptor) error {
 	if err != nil {
 		return err
 	}
-	res, err := m.src.do(req)
+	res, err := m.src.do(m.srcRepo, transport.PullScope, req)
 	if err != nil {
 		return fmt.Errorf("source blob %s: %w", d.Digest, err)
 	}

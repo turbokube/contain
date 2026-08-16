@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 	"go.uber.org/zap"
 )
 
@@ -106,7 +107,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		switch r.Method {
 		case http.MethodGet, http.MethodHead:
-			p.forward(w, r, fmt.Sprintf("/v2/%s/manifests/%s", p.upstreamRepo(repo), ref))
+			p.forward(w, r, p.upstreamRepo(repo), fmt.Sprintf("/v2/%s/manifests/%s", p.upstreamRepo(repo), ref))
 		case http.MethodPut:
 			p.manifestPut(w, r, repo, ref)
 		default:
@@ -128,10 +129,10 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			proxyError(w, 405, "UNSUPPORTED", "method not allowed")
 			return
 		}
-		p.forward(w, r, fmt.Sprintf("/v2/%s/blobs/%s", p.upstreamRepo(repo), digest))
+		p.forward(w, r, p.upstreamRepo(repo), fmt.Sprintf("/v2/%s/blobs/%s", p.upstreamRepo(repo), digest))
 	case n >= 3 && rest[n-2] == "tags" && rest[n-1] == "list":
 		repo := strings.Join(rest[:n-2], "/")
-		p.forward(w, r, fmt.Sprintf("/v2/%s/tags/list", p.upstreamRepo(repo)))
+		p.forward(w, r, p.upstreamRepo(repo), fmt.Sprintf("/v2/%s/tags/list", p.upstreamRepo(repo)))
 	default:
 		proxyError(w, 404, "UNSUPPORTED", "not found")
 	}
@@ -140,7 +141,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // forward relays a read request upstream with credentials. The http client
 // follows blob redirects to presigned storage URLs (Go strips the
 // Authorization header on cross-host redirects, keeping signatures valid).
-func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, upstreamPath string) {
+func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, upstreamRepo string, upstreamPath string) {
 	req, err := http.NewRequestWithContext(r.Context(), r.Method, p.c.base+upstreamPath, nil)
 	if err != nil {
 		proxyError(w, 500, "UNKNOWN", err.Error())
@@ -151,7 +152,7 @@ func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, upstreamPath str
 			req.Header.Set(h, v)
 		}
 	}
-	res, err := p.c.do(req)
+	res, err := p.c.do(upstreamRepo, transport.PullScope, req)
 	if err != nil {
 		proxyError(w, 502, "UNKNOWN", fmt.Sprintf("upstream: %v", err))
 		return
