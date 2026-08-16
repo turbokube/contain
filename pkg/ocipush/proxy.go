@@ -51,6 +51,41 @@ const sessionMaxIdle = time.Hour
 var proxyNameRe = regexp.MustCompile(
 	`^[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*(/[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*)*$`)
 
+// proxyRefRe accepts an OCI tag or a digest, the two forms a manifest
+// reference can take.
+var proxyRefRe = regexp.MustCompile(
+	`^([a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}|[a-z0-9]+([.+_-][a-z0-9]+)*:[a-zA-Z0-9=_-]+)$`)
+
+var proxyUploadIDRe = regexp.MustCompile(`^[a-f0-9]{32}$`)
+
+// repoOr400 joins repository-name segments and validates them.
+//
+// Every route must go through this. Path segments arrive unnormalized, so a
+// client can send ".." as a segment, and the result is interpolated into an
+// upstream URL that carries the upstream's credentials. Go's transport sends
+// the path as-is, but upstreams and CDNs commonly resolve dot segments —
+// Cloudflare, which is the deployment this proxy exists for, is one — so
+// /v2/../../admin/... can become an authenticated request to a path the
+// client chose.
+func repoOr400(w http.ResponseWriter, segments []string) (string, bool) {
+	repo := strings.Join(segments, "/")
+	if !proxyNameRe.MatchString(repo) {
+		proxyError(w, 400, "NAME_INVALID", "invalid repository name")
+		return "", false
+	}
+	return repo, true
+}
+
+// pathPartOr400 validates a single trailing path element (a manifest
+// reference, a blob digest, an upload id) for the same reason as repoOr400.
+func pathPartOr400(w http.ResponseWriter, value string, re *regexp.Regexp, code string, message string) bool {
+	if !re.MatchString(value) {
+		proxyError(w, 400, code, message)
+		return false
+	}
+	return true
+}
+
 // NewProxy creates a proxy for the given upstream registry host. prefix, when
 // non-empty, is prepended to every repository name (use for registries that
 // namespace teams/projects); it must end with "/".
@@ -100,9 +135,12 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Match from the END of the path; <name> may contain slashes.
 	switch {
 	case n >= 3 && rest[n-2] == "manifests":
-		repo, ref := strings.Join(rest[:n-2], "/"), rest[n-1]
-		if !proxyNameRe.MatchString(repo) {
-			proxyError(w, 400, "NAME_INVALID", "invalid repository name")
+		repo, ok := repoOr400(w, rest[:n-2])
+		if !ok {
+			return
+		}
+		ref := rest[n-1]
+		if !pathPartOr400(w, ref, proxyRefRe, "MANIFEST_INVALID", "invalid manifest reference") {
 			return
 		}
 		switch r.Method {
@@ -114,24 +152,44 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			proxyError(w, 405, "UNSUPPORTED", "method not allowed")
 		}
 	case n >= 3 && rest[n-2] == "blobs" && rest[n-1] == "uploads":
-		repo := strings.Join(rest[:n-2], "/")
+		repo, ok := repoOr400(w, rest[:n-2])
+		if !ok {
+			return
+		}
 		if r.Method != http.MethodPost {
 			proxyError(w, 405, "UNSUPPORTED", "method not allowed")
 			return
 		}
 		p.uploadStart(w, r, repo)
 	case n >= 4 && rest[n-3] == "blobs" && rest[n-2] == "uploads":
-		repo, id := strings.Join(rest[:n-3], "/"), rest[n-1]
+		repo, ok := repoOr400(w, rest[:n-3])
+		if !ok {
+			return
+		}
+		id := rest[n-1]
+		if !pathPartOr400(w, id, proxyUploadIDRe, "BLOB_UPLOAD_INVALID", "invalid upload id") {
+			return
+		}
 		p.uploadContinue(w, r, repo, id)
 	case n >= 3 && rest[n-2] == "blobs":
-		repo, digest := strings.Join(rest[:n-2], "/"), rest[n-1]
+		repo, ok := repoOr400(w, rest[:n-2])
+		if !ok {
+			return
+		}
+		digest := rest[n-1]
+		if !pathPartOr400(w, digest, proxyRefRe, "DIGEST_INVALID", "invalid digest") {
+			return
+		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			proxyError(w, 405, "UNSUPPORTED", "method not allowed")
 			return
 		}
 		p.forward(w, r, p.upstreamRepo(repo), fmt.Sprintf("/v2/%s/blobs/%s", p.upstreamRepo(repo), digest))
 	case n >= 3 && rest[n-2] == "tags" && rest[n-1] == "list":
-		repo := strings.Join(rest[:n-2], "/")
+		repo, ok := repoOr400(w, rest[:n-2])
+		if !ok {
+			return
+		}
 		p.forward(w, r, p.upstreamRepo(repo), fmt.Sprintf("/v2/%s/tags/list", p.upstreamRepo(repo)))
 	default:
 		proxyError(w, 404, "UNSUPPORTED", "not found")
@@ -194,10 +252,6 @@ func (p *Proxy) manifestPut(w http.ResponseWriter, r *http.Request, repo string,
 }
 
 func (p *Proxy) uploadStart(w http.ResponseWriter, r *http.Request, repo string) {
-	if !proxyNameRe.MatchString(repo) {
-		proxyError(w, 400, "NAME_INVALID", "invalid repository name")
-		return
-	}
 	// Cross-repo mount: satisfied iff the blob already exists upstream.
 	if mount := r.URL.Query().Get("mount"); mount != "" {
 		exists, err := p.c.blobExists(r.Context(), p.upstreamRepo(repo), mount)
