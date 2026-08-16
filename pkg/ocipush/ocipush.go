@@ -13,6 +13,7 @@ package ocipush
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -123,6 +124,14 @@ func (p *pusher) pushManifestDescriptor(ctx context.Context, d descriptor, refOr
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read manifest %s: %w", d.Digest, err)
+	}
+	// Child manifests are pushed by digest, so a registry would catch a
+	// mismatch, but the root goes up by tag: an inconsistent layout would
+	// otherwise be published under that tag unnoticed. Mirror verifies every
+	// node it copies; a layout on disk deserves the same treatment, and it is
+	// one hash of bytes already in memory.
+	if actual := fmt.Sprintf("sha256:%x", sha256.Sum256(raw)); actual != d.Digest {
+		return fmt.Errorf("layout manifest %s hashes to %s", d.Digest, actual)
 	}
 	return p.pushManifestBytes(ctx, raw, d.MediaType, refOrDigest)
 }

@@ -327,3 +327,63 @@ func TestPushExt(t *testing.T) {
 		rc.Close()
 	}
 }
+
+// TestPushRejectsInconsistentLayout: the root manifest goes up by tag, so a
+// layout whose bytes do not match the descriptor digest would otherwise be
+// published under that tag with the registry none the wiser.
+func TestPushRejectsInconsistentLayout(t *testing.T) {
+	img, err := random.Image(1024, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	ii := mutate.AppendManifests(empty.Index, mutate.IndexAddendum{Add: img})
+	if _, err := layout.Write(dir, ii); err != nil {
+		t.Fatal(err)
+	}
+
+	// corrupt the blob the layout index points at, keeping the file name
+	indexBytes, err := os.ReadFile(filepath.Join(dir, "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var idx struct {
+		Manifests []struct {
+			Digest string `json:"digest"`
+		} `json:"manifests"`
+	}
+	if err := json.Unmarshal(indexBytes, &idx); err != nil {
+		t.Fatal(err)
+	}
+	rootPath := filepath.Join(dir, "blobs", "sha256", strings.TrimPrefix(idx.Manifests[0].Digest, "sha256:"))
+	original, err := os.ReadFile(rootPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rootPath, append(original, ' '), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var pushes atomic.Int32
+	reg := registry.New(registry.Logger(log.New(io.Discard, "", 0)))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			pushes.Add(1)
+		}
+		reg.ServeHTTP(w, r)
+	}))
+	defer server.Close()
+	host := strings.TrimPrefix(server.URL, "http://")
+
+	err = ocipush.Push(context.Background(), dir, host+"/test/corrupt:v1",
+		ocipush.Options{Auth: authn.Anonymous})
+	if err == nil {
+		t.Fatal("expected a push failure for a layout that does not match its digests")
+	}
+	if !strings.Contains(err.Error(), "hashes to") {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if n := pushes.Load(); n != 0 {
+		t.Errorf("%d write requests reached the registry, want 0", n)
+	}
+}

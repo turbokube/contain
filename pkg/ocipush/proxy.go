@@ -348,7 +348,7 @@ func (p *Proxy) uploadContinue(w http.ResponseWriter, r *http.Request, repo stri
 			session.size += written
 		}
 		actual := fmt.Sprintf("sha256:%x", session.hash.Sum(nil))
-		if digest != actual {
+		if !strings.EqualFold(digest, actual) {
 			drop()
 			proxyError(w, 400, "DIGEST_INVALID", fmt.Sprintf("received %s, client declared %s", actual, digest))
 			return
