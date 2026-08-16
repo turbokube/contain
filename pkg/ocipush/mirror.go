@@ -69,7 +69,7 @@ func Mirror(ctx context.Context, srcRef string, dstRef string, opts MirrorOption
 	}
 	// A digest source reference pins the root; verify before trusting the tree.
 	if d, ok := src.(name.Digest); ok {
-		actual := fmt.Sprintf("sha256:%x", sha256.Sum256(raw))
+		actual := digestOf(raw)
 		if actual != d.DigestStr() {
 			return fmt.Errorf("source root manifest digest %s does not match requested %s", actual, d.DigestStr())
 		}
@@ -96,7 +96,7 @@ func (m *mirrorer) pushTree(ctx context.Context, raw []byte, mediaType string, r
 		if err != nil {
 			return err
 		}
-		if actual := fmt.Sprintf("sha256:%x", sha256.Sum256(childRaw)); actual != child.Digest {
+		if actual := digestOf(childRaw); actual != child.Digest {
 			return fmt.Errorf("child manifest %s served with digest %s", child.Digest, actual)
 		}
 		if childType == "" {
@@ -106,22 +106,12 @@ func (m *mirrorer) pushTree(ctx context.Context, raw []byte, mediaType string, r
 			return err
 		}
 	}
-	blobs := doc.Layers
-	if doc.Config != nil {
-		blobs = append([]descriptor{*doc.Config}, blobs...)
-	}
-	for _, b := range blobs {
+	for _, b := range doc.blobs() {
 		if err := m.mirrorBlob(ctx, b); err != nil {
 			return err
 		}
 	}
-	if mediaType == "" {
-		mediaType = doc.MediaType
-	}
-	if mediaType == "" {
-		mediaType = mediaTypeImageManifest
-	}
-	return m.dst.putManifest(ctx, m.dstRepo, raw, mediaType, refOrDigest)
+	return m.dst.putManifest(ctx, m.dstRepo, raw, doc.mediaTypeOr(mediaType), refOrDigest)
 }
 
 func (m *mirrorer) fetchManifest(ctx context.Context, ref string) ([]byte, string, error) {
@@ -150,7 +140,7 @@ func (m *mirrorer) fetchManifest(ctx context.Context, ref string) ([]byte, strin
 // verification, then pushes it (direct-to-storage for large blobs). Skipped
 // entirely when the destination already has the digest.
 func (m *mirrorer) mirrorBlob(ctx context.Context, d descriptor) error {
-	exists, err := m.dst.blobExists(ctx, m.dstRepo, d.Digest)
+	exists, err := m.dst.blobExists(ctx, m.dstRepo, d.Digest, transport.PushScope)
 	if err != nil {
 		return err
 	}
@@ -197,7 +187,7 @@ func verifyBlob(d descriptor, size int64, hasher hash.Hash) error {
 	if d.Size != 0 && size != d.Size {
 		return fmt.Errorf("blob %s: source served %d bytes, descriptor says %d", d.Digest, size, d.Size)
 	}
-	actual := fmt.Sprintf("sha256:%x", hasher.Sum(nil))
+	actual := digestOfHash(hasher)
 	if !strings.EqualFold(actual, d.Digest) {
 		return fmt.Errorf("blob %s: source content hashes to %s", d.Digest, actual)
 	}

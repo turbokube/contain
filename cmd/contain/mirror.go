@@ -6,11 +6,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// mirror command flags
 var (
 	mirrorSrcPlainHTTP bool
-	mirrorPartSize     int64
-	mirrorExtThreshold int64
+	mirrorDstOptions   ocipush.Options
 )
 
 func newMirrorCmd() *cobra.Command {
@@ -30,10 +28,7 @@ when available (see contain push). Credentials resolve like docker/crane.`,
 	}
 	c.Flags().BoolVar(&mirrorSrcPlainHTTP, "src-plain-http", false,
 		"use plain http for the source registry (e.g. cluster-internal registries)")
-	c.Flags().Int64Var(&mirrorExtThreshold, "direct-threshold", ocipush.DefaultExtThreshold,
-		"minimum blob size in bytes for direct-to-storage upload")
-	c.Flags().Int64Var(&mirrorPartSize, "part-size", 0,
-		"multipart part size in bytes to propose to the destination (0 = registry default)")
+	addDirectUploadFlags(c, &mirrorDstOptions, "destination")
 	return c
 }
 
@@ -45,9 +40,6 @@ func runMirror(cmd *cobra.Command, args []string) error {
 
 	return ocipush.Mirror(cmd.Context(), args[0], args[1], ocipush.MirrorOptions{
 		SrcPlainHTTP: mirrorSrcPlainHTTP,
-		Dst: ocipush.Options{
-			ExtThreshold: mirrorExtThreshold,
-			PartSize:     mirrorPartSize,
-		},
+		Dst:          mirrorDstOptions,
 	})
 }

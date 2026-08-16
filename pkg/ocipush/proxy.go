@@ -117,6 +117,14 @@ func (p *Proxy) upstreamRepo(repo string) string {
 	return p.prefix + repo
 }
 
+// created is the "blob or manifest is now available" response: 201 with the
+// client-facing location and the digest it can be fetched by.
+func created(w http.ResponseWriter, repo string, kind string, digest string) {
+	w.Header().Set("Location", fmt.Sprintf("/v2/%s/%s/%s", repo, kind, digest))
+	w.Header().Set("Docker-Content-Digest", digest)
+	w.WriteHeader(http.StatusCreated)
+}
+
 func proxyError(w http.ResponseWriter, status int, code string, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -154,7 +162,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		switch r.Method {
 		case http.MethodGet, http.MethodHead:
-			p.forward(w, r, p.upstreamRepo(repo), fmt.Sprintf("/v2/%s/manifests/%s", p.upstreamRepo(repo), ref))
+			p.forward(w, r, repo, "manifests/"+ref)
 		case http.MethodPut:
 			p.manifestPut(w, r, repo, ref)
 		default:
@@ -193,23 +201,28 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			proxyError(w, 405, "UNSUPPORTED", "method not allowed")
 			return
 		}
-		p.forward(w, r, p.upstreamRepo(repo), fmt.Sprintf("/v2/%s/blobs/%s", p.upstreamRepo(repo), digest))
+		p.forward(w, r, repo, "blobs/"+digest)
 	case n >= 3 && rest[n-2] == "tags" && rest[n-1] == "list":
 		repo, ok := repoOr400(w, rest[:n-2])
 		if !ok {
 			return
 		}
-		p.forward(w, r, p.upstreamRepo(repo), fmt.Sprintf("/v2/%s/tags/list", p.upstreamRepo(repo)))
+		p.forward(w, r, repo, "tags/list")
 	default:
 		proxyError(w, 404, "UNSUPPORTED", "not found")
 	}
 }
 
-// forward relays a read request upstream with credentials. The http client
-// follows blob redirects to presigned storage URLs (Go strips the
-// Authorization header on cross-host redirects, keeping signatures valid).
-func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, upstreamRepo string, upstreamPath string) {
-	req, err := http.NewRequestWithContext(r.Context(), r.Method, p.c.base+upstreamPath, nil)
+// forward relays a read request upstream with credentials, for the resource
+// at tail (e.g. "manifests/v1") under the proxied repository. Taking the repo
+// and the tail separately keeps the URL and the auth scope derived from one
+// value. The http client follows blob redirects to presigned storage URLs (Go
+// strips the Authorization header on cross-host redirects, keeping signatures
+// valid).
+func (p *Proxy) forward(w http.ResponseWriter, r *http.Request, repo string, tail string) {
+	upstreamRepo := p.upstreamRepo(repo)
+	req, err := http.NewRequestWithContext(r.Context(), r.Method,
+		fmt.Sprintf("%s/v2/%s/%s", p.c.base, upstreamRepo, tail), nil)
 	if err != nil {
 		proxyError(w, 500, "UNKNOWN", err.Error())
 		return
@@ -254,24 +267,19 @@ func (p *Proxy) manifestPut(w http.ResponseWriter, r *http.Request, repo string,
 		proxyError(w, 502, "UNKNOWN", err.Error())
 		return
 	}
-	digest := fmt.Sprintf("sha256:%x", sha256.Sum256(raw))
-	w.Header().Set("Location", fmt.Sprintf("/v2/%s/manifests/%s", repo, digest))
-	w.Header().Set("Docker-Content-Digest", digest)
-	w.WriteHeader(http.StatusCreated)
+	created(w, repo, "manifests", digestOf(raw))
 }
 
 func (p *Proxy) uploadStart(w http.ResponseWriter, r *http.Request, repo string) {
 	// Cross-repo mount: satisfied iff the blob already exists upstream.
 	if mount := r.URL.Query().Get("mount"); mount != "" {
-		exists, err := p.c.blobExists(r.Context(), p.upstreamRepo(repo), mount)
+		exists, err := p.c.blobExists(r.Context(), p.upstreamRepo(repo), mount, transport.PushScope)
 		if err != nil {
 			proxyError(w, 502, "UNKNOWN", err.Error())
 			return
 		}
 		if exists {
-			w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", repo, mount))
-			w.Header().Set("Docker-Content-Digest", mount)
-			w.WriteHeader(http.StatusCreated)
+			created(w, repo, "blobs", mount)
 			return
 		}
 	}
@@ -356,7 +364,7 @@ func (p *Proxy) uploadContinue(w http.ResponseWriter, r *http.Request, repo stri
 		} else {
 			session.size += written
 		}
-		actual := fmt.Sprintf("sha256:%x", session.hash.Sum(nil))
+		actual := digestOfHash(session.hash)
 		if !strings.EqualFold(digest, actual) {
 			drop()
 			proxyError(w, 400, "DIGEST_INVALID", fmt.Sprintf("received %s, client declared %s", actual, digest))
@@ -374,9 +382,7 @@ func (p *Proxy) uploadContinue(w http.ResponseWriter, r *http.Request, repo stri
 			proxyError(w, 502, "UNKNOWN", fmt.Sprintf("upstream: %v", err))
 			return
 		}
-		w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", repo, digest))
-		w.Header().Set("Docker-Content-Digest", digest)
-		w.WriteHeader(http.StatusCreated)
+		created(w, repo, "blobs", digest)
 	case http.MethodGet:
 		w.Header().Set("Docker-Upload-UUID", id)
 		w.Header().Set("Range", fmt.Sprintf("0-%d", max(session.size-1, 0)))

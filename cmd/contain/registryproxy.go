@@ -13,13 +13,11 @@ import (
 	"go.uber.org/zap"
 )
 
-// registry-proxy command flags
 var (
-	proxyAddr         string
-	proxyUpstream     string
-	proxyPrefix       string
-	proxyPartSize     int64
-	proxyExtThreshold int64
+	proxyAddr     string
+	proxyUpstream string
+	proxyPrefix   string
+	proxyOptions  ocipush.Options
 )
 
 func newRegistryProxyCmd() *cobra.Command {
@@ -47,10 +45,7 @@ does not authenticate clients.`,
 	c.Flags().StringVar(&proxyAddr, "addr", "127.0.0.1:5000", "listen address")
 	c.Flags().StringVar(&proxyUpstream, "upstream", "", "upstream registry host (required)")
 	c.Flags().StringVar(&proxyPrefix, "prefix", "", "repository name prefix to add upstream, must end with /")
-	c.Flags().Int64Var(&proxyExtThreshold, "direct-threshold", ocipush.DefaultExtThreshold,
-		"minimum blob size in bytes for direct-to-storage upload")
-	c.Flags().Int64Var(&proxyPartSize, "part-size", 0,
-		"multipart part size in bytes to propose to the upstream (0 = registry default)")
+	addDirectUploadFlags(c, &proxyOptions, "upstream")
 	cobra.CheckErr(c.MarkFlagRequired("upstream"))
 	return c
 }
@@ -61,10 +56,7 @@ func runRegistryProxy(cmd *cobra.Command, args []string) error {
 	undo := zap.ReplaceGlobals(logger)
 	defer undo()
 
-	proxy, err := ocipush.NewProxy(proxyUpstream, proxyPrefix, ocipush.Options{
-		ExtThreshold: proxyExtThreshold,
-		PartSize:     proxyPartSize,
-	})
+	proxy, err := ocipush.NewProxy(proxyUpstream, proxyPrefix, proxyOptions)
 	if err != nil {
 		return err
 	}

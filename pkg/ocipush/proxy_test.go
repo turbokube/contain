@@ -2,14 +2,12 @@ package ocipush_test
 
 import (
 	"io"
-	"log"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
@@ -21,7 +19,7 @@ import (
 // proxy to an ext-extension upstream, then pulls back via both the proxy and
 // the upstream directly.
 func TestProxyPushPull(t *testing.T) {
-	fake := &extFake{reg: registry.New(registry.Logger(log.New(io.Discard, "", 0))), staged: map[string]map[int][]byte{}}
+	fake := &extFake{reg: quietRegistry(), staged: map[string]map[int][]byte{}}
 	upstream := httptest.NewServer(fake)
 	defer upstream.Close()
 	fake.serverURL = upstream.URL

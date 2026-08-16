@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,10 +17,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/google/go-containerregistry/pkg/registry"
-	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/layout"
-	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
@@ -32,20 +28,12 @@ import (
 // entry) to a plain registry without the direct-upload extension, so the
 // client must fall back to standard OCI uploads.
 func TestPushSingleEntryLayout(t *testing.T) {
-	img, err := random.Image(1024, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	ii := mutate.AppendManifests(empty.Index, mutate.IndexAddendum{Add: img})
-	if _, err := layout.Write(dir, ii); err != nil {
-		t.Fatal(err)
-	}
+	dir, img := layoutWithImage(t, 1024, 2)
 
 	// A plain registry must never receive extension-path requests: detection
 	// is discovery-only, and this registry does not advertise _directpush.
 	var extRequests atomic.Int32
-	reg := registry.New(registry.Logger(log.New(io.Discard, "", 0)))
+	reg := quietRegistry()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "_directpush") {
 			extRequests.Add(1)
@@ -57,7 +45,7 @@ func TestPushSingleEntryLayout(t *testing.T) {
 	image := host + "/test/single:v1"
 
 	// ExtThreshold 1 would use the extension for every blob if advertised.
-	err = ocipush.Push(context.Background(), dir, image, ocipush.Options{
+	err := ocipush.Push(context.Background(), dir, image, ocipush.Options{
 		Auth:         authn.Anonymous,
 		ExtThreshold: 1,
 	})
@@ -68,21 +56,7 @@ func TestPushSingleEntryLayout(t *testing.T) {
 		t.Errorf("plain registry received %d _directpush requests, want 0", n)
 	}
 
-	ref, err := name.ParseReference(image)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := remote.Get(ref, remote.WithAuth(authn.Anonymous))
-	if err != nil {
-		t.Fatalf("pull after push: %v", err)
-	}
-	want, err := img.Digest()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Digest.String() != want.String() {
-		t.Errorf("digest not preserved: pushed %s got %s", want, got.Digest)
-	}
+	assertPushedDigest(t, image, img)
 }
 
 // TestPushMultiEntryLayout pushes a layout whose index.json has several
@@ -103,7 +77,7 @@ func TestPushMultiEntryLayout(t *testing.T) {
 	}
 	want := fmt.Sprintf("sha256:%x", sha256.Sum256(indexBytes))
 
-	server := httptest.NewServer(registry.New(registry.Logger(log.New(io.Discard, "", 0))))
+	server := httptest.NewServer(quietRegistry())
 	defer server.Close()
 	host := strings.TrimPrefix(server.URL, "http://")
 	image := host + "/test/multi:v1"
@@ -154,6 +128,10 @@ type extFake struct {
 }
 
 const fakePartSize = int64(1000)
+
+// extDiscoverDocument is what a registry advertising the extension serves;
+// shared so the fakes cannot drift from each other.
+const extDiscoverDocument = `{"extensions":[{"name":"_directpush","endpoints":["_directpush/v1/uploads","_directpush/v1/commit"]}]}`
 
 func (f *extFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
@@ -292,24 +270,16 @@ func (f *extFake) promote(blob []byte, digest string) error {
 // TestPushExt pushes through the extension API with multipart staging and
 // verifies both the resulting digests and that the extension was used.
 func TestPushExt(t *testing.T) {
-	img, err := random.Image(3500, 2) // layers > fakePartSize so multipart kicks in
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	ii := mutate.AppendManifests(empty.Index, mutate.IndexAddendum{Add: img})
-	if _, err := layout.Write(dir, ii); err != nil {
-		t.Fatal(err)
-	}
+	dir, img := layoutWithImage(t, 3500, 2)
 
-	fake := &extFake{reg: registry.New(registry.Logger(log.New(io.Discard, "", 0))), staged: map[string]map[int][]byte{}}
+	fake := &extFake{reg: quietRegistry(), staged: map[string]map[int][]byte{}}
 	server := httptest.NewServer(fake)
 	defer server.Close()
 	fake.serverURL = server.URL
 	host := strings.TrimPrefix(server.URL, "http://")
 	image := host + "/test/ext:v1"
 
-	err = ocipush.Push(context.Background(), dir, image, ocipush.Options{
+	err := ocipush.Push(context.Background(), dir, image, ocipush.Options{
 		Auth:         authn.Anonymous,
 		ExtThreshold: 1, // everything through the extension
 	})
@@ -320,55 +290,16 @@ func TestPushExt(t *testing.T) {
 		t.Errorf("extension not exercised: %d uploads %d commits", fake.uploads, fake.commits)
 	}
 
-	ref, err := name.ParseReference(image)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := remote.Get(ref, remote.WithAuth(authn.Anonymous))
-	if err != nil {
-		t.Fatalf("pull after push: %v", err)
-	}
-	want, err := img.Digest()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Digest.String() != want.String() {
-		t.Errorf("digest not preserved: pushed %s got %s", want, got.Digest)
-	}
-	// pull the whole image to verify layer content integrity end to end
-	pulled, err := remote.Image(ref, remote.WithAuth(authn.Anonymous))
-	if err != nil {
-		t.Fatal(err)
-	}
-	layers, err := pulled.Layers()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, l := range layers {
-		rc, err := l.Compressed()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := io.Copy(io.Discard, rc); err != nil {
-			t.Errorf("layer read: %v", err)
-		}
-		rc.Close()
-	}
+	assertPushedDigest(t, image, img)
+	// and the layer bytes, so correct digests over missing content still fails
+	assertLayersReadable(t, image)
 }
 
 // TestPushRejectsInconsistentLayout: the root manifest goes up by tag, so a
 // layout whose bytes do not match the descriptor digest would otherwise be
 // published under that tag with the registry none the wiser.
 func TestPushRejectsInconsistentLayout(t *testing.T) {
-	img, err := random.Image(1024, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	ii := mutate.AppendManifests(empty.Index, mutate.IndexAddendum{Add: img})
-	if _, err := layout.Write(dir, ii); err != nil {
-		t.Fatal(err)
-	}
+	dir, _ := layoutWithImage(t, 1024, 1)
 
 	// corrupt the blob the layout index points at, keeping the file name
 	indexBytes, err := os.ReadFile(filepath.Join(dir, "index.json"))
@@ -393,7 +324,7 @@ func TestPushRejectsInconsistentLayout(t *testing.T) {
 	}
 
 	var pushes atomic.Int32
-	reg := registry.New(registry.Logger(log.New(io.Discard, "", 0)))
+	reg := quietRegistry()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			pushes.Add(1)

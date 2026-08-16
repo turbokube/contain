@@ -1,7 +1,12 @@
-// Package ocipush pushes an OCI image layout to a registry with digests
-// preserved verbatim: manifests and blobs are transferred as raw bytes from
-// the layout, never re-serialized (see the digest caveats with
-// remote.WriteIndex noted in pkg/testcases).
+// Package ocipush moves images into registries with digests preserved
+// verbatim: manifests and blobs are transferred as raw bytes, never
+// re-serialized (see the digest caveats with remote.WriteIndex noted in
+// pkg/testcases).
+//
+// Three entry points share one registry client: Push sends an OCI image
+// layout from disk, Mirror copies between registries verifying every node it
+// forwards, and NewProxy serves a local registry endpoint that re-uploads
+// what stock docker tooling pushes to it.
 //
 // Blobs at or above Options.ExtThreshold are uploaded through the
 // _directpush/v1 extension (spec: PROTOCOL.md, attached) when the
@@ -16,6 +21,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -63,6 +69,41 @@ type manifestDoc struct {
 	Manifests []descriptor `json:"manifests"`
 	Config    *descriptor  `json:"config"`
 	Layers    []descriptor `json:"layers"`
+}
+
+// blobs is the config and layers in push order: a config is just another
+// blob the manifest references, and both walkers need the same set.
+func (d manifestDoc) blobs() []descriptor {
+	if d.Config == nil {
+		return d.Layers
+	}
+	return append([]descriptor{*d.Config}, d.Layers...)
+}
+
+// mediaTypeOr resolves what to send as Content-Type on the manifest PUT:
+// what the referring descriptor or response said, else the document's own
+// field, else the OCI image manifest type. Shared so the two walkers cannot
+// drift on it.
+func (d manifestDoc) mediaTypeOr(explicit string) string {
+	if explicit != "" {
+		return explicit
+	}
+	if d.MediaType != "" {
+		return d.MediaType
+	}
+	return mediaTypeImageManifest
+}
+
+// digestOf is the digest of raw manifest or blob bytes, in the string form
+// the registry API and the extension payloads use.
+func digestOf(b []byte) string {
+	return fmt.Sprintf("sha256:%x", sha256.Sum256(b))
+}
+
+// digestOfHash is digestOf for content that was streamed through a hash
+// rather than held as bytes.
+func digestOfHash(h hash.Hash) string {
+	return fmt.Sprintf("sha256:%x", h.Sum(nil))
 }
 
 // pusher walks an OCI layout and pushes to one repository.
@@ -130,7 +171,7 @@ func (p *pusher) pushManifestDescriptor(ctx context.Context, d descriptor, refOr
 	// otherwise be published under that tag unnoticed. Mirror verifies every
 	// node it copies; a layout on disk deserves the same treatment, and it is
 	// one hash of bytes already in memory.
-	if actual := fmt.Sprintf("sha256:%x", sha256.Sum256(raw)); actual != d.Digest {
+	if actual := digestOf(raw); actual != d.Digest {
 		return fmt.Errorf("layout manifest %s hashes to %s", d.Digest, actual)
 	}
 	return p.pushManifestBytes(ctx, raw, d.MediaType, refOrDigest)
@@ -148,23 +189,12 @@ func (p *pusher) pushManifestBytes(ctx context.Context, raw []byte, mediaType st
 			return err
 		}
 	}
-	if m.Config != nil {
-		if err := p.pushBlob(ctx, *m.Config); err != nil {
+	for _, b := range m.blobs() {
+		if err := p.pushBlob(ctx, b); err != nil {
 			return err
 		}
 	}
-	for _, layer := range m.Layers {
-		if err := p.pushBlob(ctx, layer); err != nil {
-			return err
-		}
-	}
-	if mediaType == "" {
-		mediaType = m.MediaType
-	}
-	if mediaType == "" {
-		mediaType = mediaTypeImageManifest
-	}
-	return p.c.putManifest(ctx, p.repo, raw, mediaType, refOrDigest)
+	return p.c.putManifest(ctx, p.repo, raw, m.mediaTypeOr(mediaType), refOrDigest)
 }
 
 func (p *pusher) pushBlob(ctx context.Context, d descriptor) error {

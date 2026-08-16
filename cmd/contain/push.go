@@ -6,11 +6,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// push command flags
-var (
-	pushPartSize     int64
-	pushExtThreshold int64
-)
+var pushOptions ocipush.Options
 
 func newPushCmd() *cobra.Command {
 	c := &cobra.Command{
@@ -29,10 +25,7 @@ Credentials are resolved like docker/crane (docker login).`,
 		Args: cobra.ExactArgs(2),
 		RunE: runPush,
 	}
-	c.Flags().Int64Var(&pushExtThreshold, "direct-threshold", ocipush.DefaultExtThreshold,
-		"minimum blob size in bytes for direct-to-storage upload")
-	c.Flags().Int64Var(&pushPartSize, "part-size", 0,
-		"multipart part size in bytes to propose to the registry (0 = registry default)")
+	addDirectUploadFlags(c, &pushOptions, "registry")
 	return c
 }
 
@@ -42,8 +35,5 @@ func runPush(cmd *cobra.Command, args []string) error {
 	undo := zap.ReplaceGlobals(logger)
 	defer undo()
 
-	return ocipush.Push(cmd.Context(), args[0], args[1], ocipush.Options{
-		ExtThreshold: pushExtThreshold,
-		PartSize:     pushPartSize,
-	})
+	return ocipush.Push(cmd.Context(), args[0], args[1], pushOptions)
 }

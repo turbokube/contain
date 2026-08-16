@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,11 +13,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/google/go-containerregistry/pkg/registry"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/google/go-containerregistry/pkg/v1/empty"
-	"github.com/google/go-containerregistry/pkg/v1/layout"
-	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
@@ -31,13 +26,12 @@ import (
 // obtained from the realm with the right scope is accepted. A client that
 // merely sets a static Authorization header never gets past this.
 type tokenRegistry struct {
-	reg      http.Handler
-	url      string
-	user     string
-	pass     string
-	issued   atomic.Int32
-	scopes   chan string
-	rejected atomic.Int32
+	reg    http.Handler
+	url    string
+	user   string
+	pass   string
+	issued atomic.Int32
+	scopes chan string
 }
 
 const testToken = "test-bearer-token"
@@ -58,7 +52,6 @@ func (tr *tokenRegistry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Header.Get("Authorization") != "Bearer "+testToken {
-		tr.rejected.Add(1)
 		w.Header().Set("WWW-Authenticate",
 			`Bearer realm="`+tr.url+`/token",service="testregistry"`)
 		w.WriteHeader(http.StatusUnauthorized)
@@ -98,18 +91,10 @@ func basicFrom(header string) (string, string, bool) {
 // go-containerregistry's transport it sent a static Basic header and every
 // request failed with 401 UNAUTHORIZED.
 func TestPushTokenAuthRegistry(t *testing.T) {
-	img, err := random.Image(1024, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	ii := mutate.AppendManifests(empty.Index, mutate.IndexAddendum{Add: img})
-	if _, err := layout.Write(dir, ii); err != nil {
-		t.Fatal(err)
-	}
+	dir, img := layoutWithImage(t, 1024, 2)
 
 	tr := &tokenRegistry{
-		reg:    registry.New(registry.Logger(log.New(io.Discard, "", 0))),
+		reg:    quietRegistry(),
 		user:   "someuser",
 		pass:   "somepass",
 		scopes: make(chan string, 32),
@@ -120,7 +105,7 @@ func TestPushTokenAuthRegistry(t *testing.T) {
 	host := strings.TrimPrefix(tr.url, "http://")
 	image := host + "/test/tokenauth:v1"
 
-	err = ocipush.Push(context.Background(), dir, image, ocipush.Options{
+	err := ocipush.Push(context.Background(), dir, image, ocipush.Options{
 		Auth: authn.FromConfig(authn.AuthConfig{Username: tr.user, Password: tr.pass}),
 	})
 	if err != nil {
@@ -185,7 +170,7 @@ func remoteGetWithToken(ref name.Reference) (string, error) {
 // mirroring from Docker Hub or GHCR looks like.
 func TestMirrorTokenAuthSource(t *testing.T) {
 	tr := &tokenRegistry{
-		reg:    registry.New(registry.Logger(log.New(io.Discard, "", 0))),
+		reg:    quietRegistry(),
 		user:   "u",
 		pass:   "p",
 		scopes: make(chan string, 32),
@@ -195,7 +180,7 @@ func TestMirrorTokenAuthSource(t *testing.T) {
 	tr.url = localhostURL(srcServer.URL)
 	srcHost := strings.TrimPrefix(tr.url, "http://")
 
-	dstServer := httptest.NewServer(registry.New(registry.Logger(log.New(io.Discard, "", 0))))
+	dstServer := httptest.NewServer(quietRegistry())
 	defer dstServer.Close()
 	dstHost := strings.TrimPrefix(localhostURL(dstServer.URL), "http://")
 

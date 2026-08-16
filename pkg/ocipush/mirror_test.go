@@ -2,15 +2,12 @@ package ocipush_test
 
 import (
 	"context"
-	"io"
-	"log"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 
@@ -20,11 +17,11 @@ import (
 // TestMirror copies a multi-manifest index from a plain source registry to an
 // ext-extension destination, pinned by digest, and verifies preservation.
 func TestMirror(t *testing.T) {
-	srcServer := httptest.NewServer(registry.New(registry.Logger(log.New(io.Discard, "", 0))))
+	srcServer := httptest.NewServer(quietRegistry())
 	defer srcServer.Close()
 	srcHost := strings.TrimPrefix(srcServer.URL, "http://")
 
-	fake := &extFake{reg: registry.New(registry.Logger(log.New(io.Discard, "", 0))), staged: map[string]map[int][]byte{}}
+	fake := &extFake{reg: quietRegistry(), staged: map[string]map[int][]byte{}}
 	dstServer := httptest.NewServer(fake)
 	defer dstServer.Close()
 	fake.serverURL = dstServer.URL

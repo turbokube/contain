@@ -49,17 +49,20 @@ type regClient struct {
 	base string // scheme://host of the registry
 	reg  name.Registry
 	auth authn.Authenticator
-	// inner is the unauthenticated base transport. Presigned storage URLs must
-	// use it directly: their signature covers no Authorization header.
-	inner http.RoundTripper
-	raw   *http.Client
+	// raw is the unauthenticated client. Presigned storage URLs must use it:
+	// their signature covers no Authorization header. Its transport is also
+	// the base the scoped clients below are built on, so connections are
+	// pooled across both.
+	raw *http.Client
 
 	mu      sync.Mutex
 	clients map[string]*http.Client
 
+	// extUsable is whether _directpush is available on this registry: set by
+	// discovery, cleared if the endpoint turns out not to honour the
+	// contract. discoverOnce keeps discovery to one request per registry.
 	discoverOnce sync.Once
-	extSupported bool
-	extDisabled  atomic.Bool
+	extUsable    atomic.Bool
 	extThreshold int64
 	partSize     int64
 }
@@ -103,13 +106,13 @@ func (c *regClient) directpushSupported(ctx context.Context, repo string) bool {
 		}
 		for _, ext := range doc.Extensions {
 			if ext.Name == "_directpush" && slices.Contains(ext.Endpoints, "_directpush/v1/uploads") {
-				c.extSupported = true
+				c.extUsable.Store(true)
 				zap.L().Debug("registry supports _directpush/v1")
 				return
 			}
 		}
 	})
-	return c.extSupported
+	return c.extUsable.Load()
 }
 
 func newRegClient(reg name.Registry, opts Options) (*regClient, error) {
@@ -138,7 +141,6 @@ func newRegClient(reg name.Registry, opts Options) (*regClient, error) {
 		base:         fmt.Sprintf("%s://%s", reg.Scheme(), reg.RegistryStr()),
 		reg:          reg,
 		auth:         auth,
-		inner:        inner,
 		raw:          &http.Client{Transport: inner},
 		clients:      map[string]*http.Client{},
 		extThreshold: threshold,
@@ -157,7 +159,7 @@ func (c *regClient) client(ctx context.Context, repo string, action string) (*ht
 	if ok {
 		return cached, nil
 	}
-	tr, err := transport.NewWithContext(ctx, c.reg, c.auth, c.inner, []string{scope})
+	tr, err := transport.NewWithContext(ctx, c.reg, c.auth, c.raw.Transport, []string{scope})
 	if err != nil {
 		return nil, fmt.Errorf("registry auth for %s: %w", scope, err)
 	}
@@ -189,13 +191,17 @@ func errorBody(res *http.Response) string {
 	return string(b)
 }
 
-func (c *regClient) blobExists(ctx context.Context, repo string, digest string) (bool, error) {
+// blobExists reports whether the registry already has the blob. action is the
+// scope to ask with: push flows pass PushScope so they reuse the token they
+// need anyway rather than making the registry mint a second, pull-only one
+// (transport.PushScope is "push,pull", so it subsumes this read).
+func (c *regClient) blobExists(ctx context.Context, repo string, digest string, action string) (bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead,
 		fmt.Sprintf("%s/v2/%s/blobs/%s", c.base, repo, digest), nil)
 	if err != nil {
 		return false, err
 	}
-	res, err := c.do(repo, transport.PullScope, req)
+	res, err := c.do(repo, action, req)
 	if err != nil {
 		return false, fmt.Errorf("blob head %s: %w", digest, err)
 	}
@@ -213,7 +219,7 @@ func (c *regClient) blobExists(ctx context.Context, repo string, digest string) 
 // pushBlobFile uploads the blob in the file at path unless it already exists
 // upstream, preferring the direct-to-storage extension for large blobs.
 func (c *regClient) pushBlobFile(ctx context.Context, repo string, d descriptor, path string) error {
-	exists, err := c.blobExists(ctx, repo, d.Digest)
+	exists, err := c.blobExists(ctx, repo, d.Digest, transport.PushScope)
 	if err != nil {
 		return err
 	}
@@ -221,7 +227,7 @@ func (c *regClient) pushBlobFile(ctx context.Context, repo string, d descriptor,
 		zap.L().Debug("blob exists", zap.String("digest", d.Digest), zap.Int64("size", d.Size))
 		return nil
 	}
-	if !c.extDisabled.Load() && d.Size >= c.extThreshold && c.directpushSupported(ctx, repo) {
+	if d.Size >= c.extThreshold && c.directpushSupported(ctx, repo) {
 		err := c.pushBlobExt(ctx, repo, d, path)
 		if err == nil {
 			return nil
@@ -230,7 +236,7 @@ func (c *regClient) pushBlobFile(ctx context.Context, repo string, d descriptor,
 			return err
 		}
 		// safety net: discovery said yes but the endpoint doesn't honor the contract
-		c.extDisabled.Store(true)
+		c.extUsable.Store(false)
 		zap.L().Warn("registry advertised _directpush but does not honor it, using standard uploads")
 	}
 	return c.pushBlobStandard(ctx, repo, d, path)
@@ -451,6 +457,9 @@ func (c *regClient) extUploadParts(ctx context.Context, session *extStartRespons
 				return fmt.Errorf("part %d: status %d: %s", i+1, res.StatusCode, errorBody(res))
 			}
 			parts[i] = extPart{PartNumber: i + 1, Etag: res.Header.Get("ETag")}
+			// drain before close, or a backend that answers with a body (some
+			// S3-compatible gateways return XML) costs a fresh connection per part
+			io.Copy(io.Discard, res.Body) //nolint:errcheck
 			res.Body.Close()
 			zap.L().Debug("part uploaded", zap.String("digest", d.Digest),
 				zap.Int("part", i+1), zap.Int("of", len(session.Urls)))

@@ -3,7 +3,6 @@ package ocipush_test
 import (
 	"context"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,13 +11,6 @@ import (
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/authn"
-	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/google/go-containerregistry/pkg/registry"
-	"github.com/google/go-containerregistry/pkg/v1/empty"
-	"github.com/google/go-containerregistry/pkg/v1/layout"
-	"github.com/google/go-containerregistry/pkg/v1/mutate"
-	"github.com/google/go-containerregistry/pkg/v1/random"
-	"github.com/google/go-containerregistry/pkg/v1/remote"
 
 	"github.com/turbokube/contain/pkg/ocipush"
 )
@@ -33,7 +25,6 @@ type expiringFake struct {
 	mu             sync.Mutex
 	sessions       int
 	expireSessions int
-	partAttempts   int
 }
 
 func (f *expiringFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +35,6 @@ func (f *expiringFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.mu.Unlock()
 	case r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/stage/"):
 		f.mu.Lock()
-		f.partAttempts++
 		expired := f.sessions <= f.expireSessions
 		f.mu.Unlock()
 		if expired {
@@ -61,19 +51,11 @@ func (f *expiringFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // PROTOCOL.md: on a 403 from storage the client takes a fresh session for the
 // same digest and re-uploads all parts.
 func TestPushExtRestartsExpiredSession(t *testing.T) {
-	img, err := random.Image(3500, 2) // layers > fakePartSize, so multipart
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	ii := mutate.AppendManifests(empty.Index, mutate.IndexAddendum{Add: img})
-	if _, err := layout.Write(dir, ii); err != nil {
-		t.Fatal(err)
-	}
+	dir, img := layoutWithImage(t, 3500, 2)
 
 	fake := &expiringFake{
 		extFake: &extFake{
-			reg:            registry.New(registry.Logger(log.New(io.Discard, "", 0))),
+			reg:            quietRegistry(),
 			staged:         map[string]map[int][]byte{},
 			expiresSeconds: 900,
 		},
@@ -85,7 +67,7 @@ func TestPushExtRestartsExpiredSession(t *testing.T) {
 	host := strings.TrimPrefix(server.URL, "http://")
 	image := host + "/test/expiry:v1"
 
-	err = ocipush.Push(context.Background(), dir, image, ocipush.Options{
+	err := ocipush.Push(context.Background(), dir, image, ocipush.Options{
 		Auth:         authn.Anonymous,
 		ExtThreshold: 1,
 	})
@@ -99,39 +81,17 @@ func TestPushExtRestartsExpiredSession(t *testing.T) {
 		t.Errorf("expected a fresh session after expiry, got %d sessions", sessions)
 	}
 
-	ref, err := name.ParseReference(image)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := remote.Get(ref, remote.WithAuth(authn.Anonymous))
-	if err != nil {
-		t.Fatalf("pull after push: %v", err)
-	}
-	want, err := img.Digest()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Digest.String() != want.String() {
-		t.Errorf("digest not preserved across the retry: pushed %s got %s", want, got.Digest)
-	}
+	assertPushedDigest(t, image, img)
 }
 
 // TestPushExtGivesUpAfterRepeatedExpiry: retries are bounded. A registry whose
 // window is too short for the blob must surface an error, not loop.
 func TestPushExtGivesUpAfterRepeatedExpiry(t *testing.T) {
-	img, err := random.Image(3500, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	ii := mutate.AppendManifests(empty.Index, mutate.IndexAddendum{Add: img})
-	if _, err := layout.Write(dir, ii); err != nil {
-		t.Fatal(err)
-	}
+	dir, _ := layoutWithImage(t, 3500, 1)
 
 	fake := &expiringFake{
 		extFake: &extFake{
-			reg:            registry.New(registry.Logger(log.New(io.Discard, "", 0))),
+			reg:            quietRegistry(),
 			staged:         map[string]map[int][]byte{},
 			expiresSeconds: 1,
 		},
@@ -142,7 +102,7 @@ func TestPushExtGivesUpAfterRepeatedExpiry(t *testing.T) {
 	fake.serverURL = server.URL
 	host := strings.TrimPrefix(server.URL, "http://")
 
-	err = ocipush.Push(context.Background(), dir, host+"/test/alwaysexpired:v1", ocipush.Options{
+	err := ocipush.Push(context.Background(), dir, host+"/test/alwaysexpired:v1", ocipush.Options{
 		Auth:         authn.Anonymous,
 		ExtThreshold: 1,
 	})
@@ -181,15 +141,7 @@ func (f *headerRecordingFake) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 // Content-Length, and nothing else the signature would not expect — notably no
 // Content-Type and no unprescribed x-amz-*.
 func TestPushExtPartHeaderDiscipline(t *testing.T) {
-	img, err := random.Image(3500, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	ii := mutate.AppendManifests(empty.Index, mutate.IndexAddendum{Add: img})
-	if _, err := layout.Write(dir, ii); err != nil {
-		t.Fatal(err)
-	}
+	dir, _ := layoutWithImage(t, 3500, 1)
 
 	prescribed := map[string]string{
 		"x-amz-checksum-sha256": "sentinel-checksum",
@@ -197,7 +149,7 @@ func TestPushExtPartHeaderDiscipline(t *testing.T) {
 	}
 	fake := &headerRecordingFake{
 		extFake: &extFake{
-			reg:            registry.New(registry.Logger(log.New(io.Discard, "", 0))),
+			reg:            quietRegistry(),
 			staged:         map[string]map[int][]byte{},
 			extraHeaders:   prescribed,
 			expiresSeconds: 900,
@@ -208,7 +160,7 @@ func TestPushExtPartHeaderDiscipline(t *testing.T) {
 	fake.serverURL = server.URL
 	host := strings.TrimPrefix(server.URL, "http://")
 
-	err = ocipush.Push(context.Background(), dir, host+"/test/headers:v1", ocipush.Options{
+	err := ocipush.Push(context.Background(), dir, host+"/test/headers:v1", ocipush.Options{
 		Auth:         authn.Anonymous,
 		ExtThreshold: 1,
 	})
@@ -253,28 +205,39 @@ func TestPushExtPartHeaderDiscipline(t *testing.T) {
 	}
 }
 
-// notConfiguredFake advertises _directpush from a static discovery document
-// but answers every session request 501, which is what a registry instance
-// missing its object-storage credentials does: discovery is a capability
-// list, not a health check.
-type notConfiguredFake struct {
-	reg      http.Handler
-	sessions atomic.Int32
-	standard atomic.Int32
+// discoveryFake serves a canned discovery document and intercepts every
+// _directpush request, so a test can pin what the client does with each shape
+// of "no": an instance that advertises but cannot perform (501), and one that
+// advertises nothing (empty extensions list).
+type discoveryFake struct {
+	reg http.Handler
+	// advertise puts _directpush in the discovery document.
+	advertise bool
+	// extStatus is what an intercepted _directpush request answers.
+	extStatus int
+	extBody   string
+
+	discover, extPaths, standardUploads atomic.Int32
 }
 
-func (f *notConfiguredFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (f *discoveryFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/v2/_oci/ext/discover":
-		w.Write([]byte(`{"extensions":[{"name":"_directpush","endpoints":["_directpush/v1/uploads","_directpush/v1/commit"]}]}`)) //nolint:errcheck
-	case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v2/_directpush/"):
-		f.sessions.Add(1)
+		f.discover.Add(1)
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotImplemented)
-		w.Write([]byte(`{"errors":[{"code":"UNSUPPORTED","message":"direct upload not available"}]}`)) //nolint:errcheck
+		if f.advertise {
+			w.Write([]byte(extDiscoverDocument)) //nolint:errcheck
+		} else {
+			w.Write([]byte(`{"extensions":[]}`)) //nolint:errcheck
+		}
+	case strings.Contains(r.URL.Path, "_directpush"):
+		f.extPaths.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(f.extStatus)
+		w.Write([]byte(f.extBody)) //nolint:errcheck
 	default:
 		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/blobs/uploads/") {
-			f.standard.Add(1)
+			f.standardUploads.Add(1)
 		}
 		f.reg.ServeHTTP(w, r)
 	}
@@ -285,51 +248,34 @@ func (f *notConfiguredFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // the extension is disabled for the rest of the process rather than retried
 // per blob.
 func TestPushExtFallsBackWhenAdvertisedButUnavailable(t *testing.T) {
-	img, err := random.Image(3500, 3)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	ii := mutate.AppendManifests(empty.Index, mutate.IndexAddendum{Add: img})
-	if _, err := layout.Write(dir, ii); err != nil {
-		t.Fatal(err)
-	}
+	dir, img := layoutWithImage(t, 3500, 3)
 
-	fake := &notConfiguredFake{reg: registry.New(registry.Logger(log.New(io.Discard, "", 0)))}
+	fake := &discoveryFake{
+		reg:       quietRegistry(),
+		advertise: true,
+		extStatus: http.StatusNotImplemented,
+		extBody:   `{"errors":[{"code":"UNSUPPORTED","message":"direct upload not available"}]}`,
+	}
 	server := httptest.NewServer(fake)
 	defer server.Close()
-	host := strings.TrimPrefix(server.URL, "http://")
+	host := hostOf(server)
 	image := host + "/test/notconfigured:v1"
 
-	err = ocipush.Push(context.Background(), dir, image, ocipush.Options{
+	err := ocipush.Push(context.Background(), dir, image, ocipush.Options{
 		Auth:         authn.Anonymous,
 		ExtThreshold: 1, // every blob would prefer the extension
 	})
 	if err != nil {
 		t.Fatalf("push must fall back to standard upload, got: %v", err)
 	}
-	if n := fake.sessions.Load(); n != 1 {
+	if n := fake.extPaths.Load(); n != 1 {
 		t.Errorf("session endpoint called %d times, want 1 before the extension is disabled", n)
 	}
-	if fake.standard.Load() == 0 {
+	if fake.standardUploads.Load() == 0 {
 		t.Error("no standard uploads were made")
 	}
 
-	ref, err := name.ParseReference(image)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := remote.Get(ref, remote.WithAuth(authn.Anonymous))
-	if err != nil {
-		t.Fatalf("pull after push: %v", err)
-	}
-	want, err := img.Digest()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Digest.String() != want.String() {
-		t.Errorf("digest not preserved: pushed %s got %s", want, got.Digest)
-	}
+	assertPushedDigest(t, image, img)
 }
 
 func TestNewProxyRejectsInvalidPrefix(t *testing.T) {
@@ -345,52 +291,20 @@ func TestNewProxyRejectsInvalidPrefix(t *testing.T) {
 	}
 }
 
-// emptyExtensionsFake answers discovery 200 with an empty extensions list,
-// which is what a registry that implements _directpush but cannot currently
-// perform it MUST now serve instead of advertising an endpoint that would
-// 501 (PROTOCOL.md, "Discovery").
-type emptyExtensionsFake struct {
-	reg      http.Handler
-	discover atomic.Int32
-	extPaths atomic.Int32
-}
-
-func (f *emptyExtensionsFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	switch {
-	case r.Method == http.MethodGet && r.URL.Path == "/v2/_oci/ext/discover":
-		f.discover.Add(1)
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"extensions":[]}`)) //nolint:errcheck
-	case strings.Contains(r.URL.Path, "_directpush"):
-		f.extPaths.Add(1)
-		http.Error(w, "must not be called", http.StatusNotImplemented)
-	default:
-		f.reg.ServeHTTP(w, r)
-	}
-}
-
 // TestPushEmptyExtensionsListMeansNo distinguishes "this registry does not
 // advertise the extension" from the 404 that a registry with no discovery
 // endpoint gives: an empty list is a valid 200 with parseable JSON, so the
 // decision has to come from the list contents rather than the status code.
 func TestPushEmptyExtensionsListMeansNo(t *testing.T) {
-	img, err := random.Image(3500, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	ii := mutate.AppendManifests(empty.Index, mutate.IndexAddendum{Add: img})
-	if _, err := layout.Write(dir, ii); err != nil {
-		t.Fatal(err)
-	}
+	dir, img := layoutWithImage(t, 3500, 2)
 
-	fake := &emptyExtensionsFake{reg: registry.New(registry.Logger(log.New(io.Discard, "", 0)))}
+	fake := &discoveryFake{reg: quietRegistry(), extStatus: http.StatusNotImplemented}
 	server := httptest.NewServer(fake)
 	defer server.Close()
-	host := strings.TrimPrefix(server.URL, "http://")
+	host := hostOf(server)
 	image := host + "/test/emptyext:v1"
 
-	err = ocipush.Push(context.Background(), dir, image, ocipush.Options{
+	err := ocipush.Push(context.Background(), dir, image, ocipush.Options{
 		Auth:         authn.Anonymous,
 		ExtThreshold: 1, // every blob would prefer the extension if advertised
 	})
@@ -404,19 +318,5 @@ func TestPushEmptyExtensionsListMeansNo(t *testing.T) {
 		t.Errorf("discovery called %d times, want 1 cached lookup", n)
 	}
 
-	ref, err := name.ParseReference(image)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := remote.Get(ref, remote.WithAuth(authn.Anonymous))
-	if err != nil {
-		t.Fatalf("pull after push: %v", err)
-	}
-	want, err := img.Digest()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Digest.String() != want.String() {
-		t.Errorf("digest not preserved: pushed %s got %s", want, got.Digest)
-	}
+	assertPushedDigest(t, image, img)
 }
