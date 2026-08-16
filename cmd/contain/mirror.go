@@ -40,7 +40,7 @@ func runMirror(cmd *cobra.Command, args []string) error {
 	defer undo()
 
 	return ocipush.Mirror(cmd.Context(), args[0], args[1], ocipush.MirrorOptions{
-		SrcPlainHTTP: mirrorSrcPlainHTTP,
-		Dst:          mirrorDstOptions,
+		Src: ocipush.SourceOptions{PlainHTTP: mirrorSrcPlainHTTP},
+		Dst: mirrorDstOptions,
 	})
 }

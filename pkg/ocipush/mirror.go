@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 	"go.uber.org/zap"
@@ -21,15 +22,33 @@ const manifestAccept = "application/vnd.oci.image.index.v1+json, " +
 	"application/vnd.docker.distribution.manifest.list.v2+json, " +
 	"application/vnd.docker.distribution.manifest.v2+json"
 
-type MirrorOptions struct {
-	// Src configures source registry access (Auth/Keychain/Transport).
-	Src Options
-	// Dst configures destination push (Auth/Keychain/ExtThreshold/PartSize).
-	Dst Options
-	// SrcPlainHTTP uses http:// for the source registry (e.g. cluster-internal
+// SourceOptions is how to reach a registry that is only read from. It is
+// deliberately not Options: a source client issues nothing but GETs, so the
+// push-side settings (ExtThreshold, PartSize, StagingDir) have no meaning
+// there and are structurally absent rather than silently ignored.
+type SourceOptions struct {
+	// Auth overrides keychain resolution (e.g. authn.Anonymous in tests).
+	Auth authn.Authenticator
+	// Keychain resolves registry credentials; defaults to authn.DefaultKeychain.
+	Keychain authn.Keychain
+	// Transport overrides the default http transport.
+	Transport http.RoundTripper
+	// PlainHTTP uses http:// for this registry (e.g. cluster-internal
 	// registries). Content integrity still holds: every manifest and blob is
 	// verified against its digest before being pushed.
-	SrcPlainHTTP bool
+	PlainHTTP bool
+}
+
+// access is how the source is reached, as the registry client wants it.
+func (s SourceOptions) access() Options {
+	return Options{Auth: s.Auth, Keychain: s.Keychain, Transport: s.Transport}
+}
+
+type MirrorOptions struct {
+	// Src is read-only access to the registry being copied from.
+	Src SourceOptions
+	// Dst is the destination, including how to push to it.
+	Dst Options
 }
 
 // Mirror copies the image at srcRef (tag, digest, or tag@digest) to dstRef,
@@ -39,7 +58,7 @@ type MirrorOptions struct {
 // cannot inject content under a wrong digest.
 func Mirror(ctx context.Context, srcRef string, dstRef string, opts MirrorOptions) error {
 	var srcNameOpts []name.Option
-	if opts.SrcPlainHTTP {
+	if opts.Src.PlainHTTP {
 		srcNameOpts = append(srcNameOpts, name.Insecure)
 	}
 	src, err := name.ParseReference(srcRef, srcNameOpts...)
@@ -50,7 +69,7 @@ func Mirror(ctx context.Context, srcRef string, dstRef string, opts MirrorOption
 	if err != nil {
 		return fmt.Errorf("parse destination %s: %w", dstRef, err)
 	}
-	srcClient, err := newRegClient(src.Context().Registry, opts.Src)
+	srcClient, err := newRegClient(src.Context().Registry, opts.Src.access())
 	if err != nil {
 		return err
 	}

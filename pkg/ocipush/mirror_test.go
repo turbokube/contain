@@ -48,7 +48,7 @@ func TestMirror(t *testing.T) {
 		srcHost+"/yolean/app:build1@"+want.String(),
 		dstHost+"/yolean/app:build1",
 		ocipush.MirrorOptions{
-			Src: ocipush.Options{Auth: authn.Anonymous},
+			Src: ocipush.SourceOptions{Auth: authn.Anonymous},
 			Dst: ocipush.Options{Auth: authn.Anonymous, ExtThreshold: 1},
 		})
 	if err != nil {
@@ -75,7 +75,7 @@ func TestMirror(t *testing.T) {
 		srcHost+"/yolean/app:build1@"+want.String(),
 		dstHost+"/yolean/app:build1",
 		ocipush.MirrorOptions{
-			Src: ocipush.Options{Auth: authn.Anonymous},
+			Src: ocipush.SourceOptions{Auth: authn.Anonymous},
 			Dst: ocipush.Options{Auth: authn.Anonymous, ExtThreshold: 1},
 		})
 	if err != nil {
@@ -91,7 +91,7 @@ func TestMirror(t *testing.T) {
 		srcHost+"/yolean/app:build1@"+wrong,
 		dstHost+"/yolean/app:bad",
 		ocipush.MirrorOptions{
-			Src: ocipush.Options{Auth: authn.Anonymous},
+			Src: ocipush.SourceOptions{Auth: authn.Anonymous},
 			Dst: ocipush.Options{Auth: authn.Anonymous},
 		})
 	if err == nil {

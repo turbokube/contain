@@ -199,7 +199,7 @@ func TestMirrorTokenAuthSource(t *testing.T) {
 
 	err = ocipush.Mirror(context.Background(), srcHost+"/team/app:v1", dstHost+"/team/app:v1",
 		ocipush.MirrorOptions{
-			Src: ocipush.Options{Auth: authn.FromConfig(authn.AuthConfig{Username: tr.user, Password: tr.pass})},
+			Src: ocipush.SourceOptions{Auth: authn.FromConfig(authn.AuthConfig{Username: tr.user, Password: tr.pass})},
 			Dst: ocipush.Options{Auth: authn.Anonymous},
 		})
 	if err != nil {
