@@ -129,6 +129,10 @@ type extFake struct {
 
 const fakePartSize = int64(1000)
 
+// fakeSignature is in every presigned URL so tests can assert that no
+// message leaks one.
+const fakeSignature = "f4k3s1gn4tur3"
+
 // extDiscoverDocument is what a registry advertising the extension serves;
 // shared so the fakes cannot drift from each other.
 const extDiscoverDocument = `{"extensions":[{"name":"_directpush","endpoints":["_directpush/v1/uploads","_directpush/v1/commit"]}]}`
@@ -165,7 +169,7 @@ func (f *extFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		parts := int((body.Size + fakePartSize - 1) / fakePartSize)
 		urls := make([]string, parts)
 		for i := range urls {
-			urls[i] = fmt.Sprintf("%s/stage/%s?part=%d", f.serverURL, key, i+1)
+			urls[i] = fmt.Sprintf("%s/stage/%s?part=%d&X-Amz-Signature=%s", f.serverURL, key, i+1, fakeSignature)
 		}
 		uploadID := ""
 		if parts > 1 {

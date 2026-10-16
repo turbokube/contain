@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"regexp"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -34,11 +37,18 @@ const (
 	// URLs expire mid-upload. Sessions are not resumable, so each retry
 	// re-uploads every part.
 	extSessionRetries = 1
+	// partUploadAttempts bounds PUTs of one part to one presigned URL on
+	// failures that may answer differently next time: 5xx, 429, transport.
+	partUploadAttempts = 4
 )
+
+// partRetryBackoff is the wait before the second part attempt, doubling after.
+var partRetryBackoff = time.Second
 
 var (
 	errExtUnsupported = errors.New("registry does not support the direct-upload extension")
 	errExtExpired     = errors.New("presigned upload urls expired")
+	errExtRefused     = errors.New("object storage refused a fresh presigned url, check the registry's storage credentials and permissions")
 )
 
 // directPush holds the extension's state for one registry.
@@ -150,6 +160,7 @@ type extStartResponse struct {
 	// deadline is ExpiresSeconds resolved against the local clock, taken
 	// before the request so it never overestimates the remaining validity.
 	deadline time.Time
+	issued   time.Time
 }
 
 type extPart struct {
@@ -237,6 +248,7 @@ func (c *regClient) extStartSession(ctx context.Context, repo string, d descript
 		res.Body.Close()
 		return nil, errExtUnsupported
 	}
+	session.issued = requested
 	if session.ExpiresSeconds > 0 {
 		session.deadline = requested.Add(time.Duration(session.ExpiresSeconds) * time.Second)
 	}
@@ -254,41 +266,11 @@ func (c *regClient) extUploadParts(ctx context.Context, session *extStartRespons
 			if length <= 0 {
 				return fmt.Errorf("part %d: no data at offset %d", i+1, offset)
 			}
-			// A part must begin before the URLs expire; one already in flight
-			// may finish after. Checking up front skips a transfer storage is
-			// certain to reject.
-			if !session.deadline.IsZero() && time.Now().After(session.deadline) {
-				return fmt.Errorf("part %d: %w", i+1, errExtExpired)
-			}
-			req, err := http.NewRequestWithContext(gctx, http.MethodPut, partURL,
-				io.NewSectionReader(f, offset, length))
+			etag, err := c.extUploadPart(gctx, session, d, i+1, partURL, f, offset, length)
 			if err != nil {
 				return err
 			}
-			req.ContentLength = length
-			// Exactly the prescribed headers and nothing else. A presigned
-			// signature covers a fixed header set, so an extra one (any
-			// x-amz-*, or Content-Type on some backends) invalidates it.
-			for k, v := range session.Headers {
-				req.Header.Set(k, v)
-			}
-			// presigned URL: no registry credentials, raw transport
-			res, err := c.raw.Do(req)
-			if err != nil {
-				return fmt.Errorf("part %d: %w", i+1, err)
-			}
-			if res.StatusCode == http.StatusForbidden {
-				// how object storage reports a presigned URL past its lifetime
-				return fmt.Errorf("part %d: %s: %w", i+1, errorBody(res), errExtExpired)
-			}
-			if res.StatusCode < 200 || res.StatusCode > 299 {
-				return fmt.Errorf("part %d: status %d: %s", i+1, res.StatusCode, errorBody(res))
-			}
-			parts[i] = extPart{PartNumber: i + 1, Etag: res.Header.Get("ETag")}
-			// drain before close, or a backend that answers with a body (some
-			// S3-compatible gateways return XML) costs a fresh connection per part
-			io.Copy(io.Discard, res.Body) //nolint:errcheck
-			res.Body.Close()
+			parts[i] = extPart{PartNumber: i + 1, Etag: etag}
 			zap.L().Debug("part uploaded", zap.String("digest", d.Digest),
 				zap.Int("part", i+1), zap.Int("of", len(session.Urls)))
 			return nil
@@ -298,6 +280,174 @@ func (c *regClient) extUploadParts(ctx context.Context, session *extStartRespons
 		return nil, err
 	}
 	return parts, nil
+}
+
+// extUploadPart PUTs one part, retrying on the same presigned URL while it is
+// valid, and returns the part's ETag.
+func (c *regClient) extUploadPart(ctx context.Context, session *extStartResponse, d descriptor, part int, partURL string, f *os.File, offset, length int64) (string, error) {
+	storage := storageOrigin(partURL)
+	wait := partRetryBackoff
+	var last error
+	for attempt := 1; ; attempt++ {
+		// A part must begin before the URLs expire; one already in flight
+		// may finish after. Checking up front skips a transfer storage is
+		// certain to reject.
+		if !session.deadline.IsZero() && time.Now().After(session.deadline) {
+			if last != nil {
+				return "", fmt.Errorf("part %d: %w, last attempt: %v", part, errExtExpired, last)
+			}
+			return "", fmt.Errorf("part %d: %w", part, errExtExpired)
+		}
+		etag, err := c.extPutPart(ctx, session, part, partURL, storage, io.NewSectionReader(f, offset, length), length)
+		if err == nil {
+			return etag, nil
+		}
+		if ctx.Err() != nil || !errors.Is(err, errRetryable) {
+			return "", err
+		}
+		if attempt >= partUploadAttempts {
+			return "", fmt.Errorf("%w, after %d attempts", err, attempt)
+		}
+		last = err
+		zap.L().Info("retrying part upload", zap.String("digest", d.Digest),
+			zap.Int("part", part), zap.Int("attempt", attempt+1), zap.Error(err))
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return "", err
+		case <-timer.C:
+		}
+		wait *= 2
+	}
+}
+
+func (c *regClient) extPutPart(ctx context.Context, session *extStartResponse, part int, partURL string, storage string, body io.Reader, length int64) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, partURL, body)
+	if err != nil {
+		return "", fmt.Errorf("part %d to %s: %w", part, storage, withoutURL(err))
+	}
+	req.ContentLength = length
+	// Exactly the prescribed headers and nothing else. A presigned
+	// signature covers a fixed header set, so an extra one (any
+	// x-amz-*, or Content-Type on some backends) invalidates it.
+	for k, v := range session.Headers {
+		req.Header.Set(k, v)
+	}
+	// presigned URL: no registry credentials, raw transport
+	res, err := c.raw.Do(req)
+	if err != nil {
+		return "", retryable{fmt.Errorf("part %d to %s: %w", part, storage, withoutURL(err))}
+	}
+	if res.StatusCode >= 200 && res.StatusCode <= 299 {
+		etag := res.Header.Get("ETag")
+		// drain before close, or a backend that answers with a body (some
+		// S3-compatible gateways return XML) costs a fresh connection per part
+		io.Copy(io.Discard, res.Body) //nolint:errcheck
+		res.Body.Close()
+		return etag, nil
+	}
+	op := fmt.Sprintf("part %d to %s", part, storage)
+	summary := storageErrorBody(res, partURL)
+	if res.StatusCode == http.StatusForbidden {
+		return "", session.forbidden(op, summary)
+	}
+	return "", &statusErr{op: op, status: res.StatusCode, body: summary}
+}
+
+// forbidden classifies a 403 from storage. It is how storage reports a
+// presigned URL past its lifetime, but also how it reports that the
+// registry's signing credentials are no good, and only the first is helped
+// by a fresh session.
+func (s *extStartResponse) forbidden(op string, summary string) error {
+	if s.deadline.IsZero() || !time.Now().Before(s.deadline.Add(-expiryMargin(s.ExpiresSeconds))) {
+		return fmt.Errorf("%s: status 403: %s: %w", op, summary, errExtExpired)
+	}
+	return fmt.Errorf("%s: status 403: %s: %s into %ds validity: %w", op, summary,
+		time.Since(s.issued).Round(time.Second), s.ExpiresSeconds, errExtRefused)
+}
+
+// expiryMargin is how close to the deadline a 403 still counts as expiry,
+// allowing for clock skew between us, the registry and storage.
+func expiryMargin(expiresSeconds int64) time.Duration {
+	return max(time.Duration(expiresSeconds)*time.Second/10, time.Minute)
+}
+
+// storageOrigin is a presigned URL without its path and query; the query
+// carries the signature and must never reach a message.
+func storageOrigin(presigned string) string {
+	u, err := url.Parse(presigned)
+	if err != nil || u.Host == "" {
+		return "object storage"
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+// withoutURL drops the full request URL that net/http errors print.
+func withoutURL(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		return ue.Err
+	}
+	return err
+}
+
+var (
+	s3CodePattern    = regexp.MustCompile(`<Code>([^<]*)</Code>`)
+	s3MessagePattern = regexp.MustCompile(`<Message>([^<]*)</Message>`)
+	htmlTitlePattern = regexp.MustCompile(`(?is)<title>\s*(.*?)\s*</title>`)
+)
+
+// storageErrorBody condenses a storage error response for a message: Code and
+// Message from S3 XML, the title of an HTML page such as a CDN's error page,
+// otherwise the start of the body.
+func storageErrorBody(res *http.Response, presigned string) string {
+	body := strings.TrimSpace(errorBody(res))
+	if m := s3CodePattern.FindStringSubmatch(body); m != nil {
+		summary := m[1]
+		if msg := s3MessagePattern.FindStringSubmatch(body); msg != nil && msg[1] != "" {
+			summary += ": " + msg[1]
+		}
+		return redactQuery(summary, presigned)
+	}
+	lower := strings.ToLower(body)
+	if strings.HasPrefix(lower, "<!doctype html") || strings.HasPrefix(lower, "<html") ||
+		strings.HasPrefix(res.Header.Get("Content-Type"), "text/html") {
+		summary := "html page"
+		if m := htmlTitlePattern.FindStringSubmatch(body); m != nil {
+			summary += fmt.Sprintf(" %q", strings.Join(strings.Fields(m[1]), " "))
+		}
+		if server := res.Header.Get("Server"); server != "" {
+			summary += " from " + server
+		}
+		return summary
+	}
+	summary := strings.Join(strings.Fields(body), " ")
+	if len(summary) > 200 {
+		summary = summary[:200] + "..."
+	}
+	return redactQuery(summary, presigned)
+}
+
+// redactQuery removes the presigned query, and any signature value from it,
+// should storage echo them back.
+func redactQuery(s string, presigned string) string {
+	u, err := url.Parse(presigned)
+	if err != nil || u.RawQuery == "" {
+		return s
+	}
+	s = strings.ReplaceAll(s, u.RawQuery, "[redacted]")
+	for k, vs := range u.Query() {
+		if !strings.Contains(strings.ToLower(k), "signature") {
+			continue
+		}
+		for _, v := range vs {
+			if v != "" {
+				s = strings.ReplaceAll(s, v, "[redacted]")
+			}
+		}
+	}
+	return s
 }
 
 func (c *regClient) extCommit(ctx context.Context, repo string, d descriptor, session *extStartResponse, parts []extPart) error {
