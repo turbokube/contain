@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/google/go-containerregistry/pkg/authn"
 
@@ -25,6 +26,8 @@ type expiringFake struct {
 	mu             sync.Mutex
 	sessions       int
 	expireSessions int
+	// delay holds each 403, so it can arrive after the session's deadline.
+	delay time.Duration
 }
 
 func (f *expiringFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -39,6 +42,7 @@ func (f *expiringFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.mu.Unlock()
 		if expired {
 			io.Copy(io.Discard, r.Body) //nolint:errcheck
+			time.Sleep(f.delay)
 			w.WriteHeader(http.StatusForbidden)
 			w.Write([]byte(`<Error><Code>AccessDenied</Code><Message>Request has expired</Message></Error>`)) //nolint:errcheck
 			return
@@ -48,8 +52,8 @@ func (f *expiringFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // TestPushExtRestartsExpiredSession covers the expiry contract added to
-// PROTOCOL.md: on a 403 from storage the client takes a fresh session for the
-// same digest and re-uploads all parts.
+// PROTOCOL.md: on a 403 from storage past the session's deadline the client
+// takes a fresh session for the same digest and re-uploads all parts.
 func TestPushExtRestartsExpiredSession(t *testing.T) {
 	dir, img := layoutWithImage(t, 3500, 2)
 
@@ -57,9 +61,10 @@ func TestPushExtRestartsExpiredSession(t *testing.T) {
 		extFake: &extFake{
 			reg:            quietRegistry(),
 			staged:         map[string]map[int][]byte{},
-			expiresSeconds: 900,
+			expiresSeconds: 1,
 		},
-		expireSessions: 1, // the first session's URLs are already expired
+		expireSessions: 1,
+		delay:          1100 * time.Millisecond, // the 403 lands past the deadline
 	}
 	server := httptest.NewServer(fake)
 	defer server.Close()
