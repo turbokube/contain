@@ -2,6 +2,8 @@ module github.com/turbokube/contain/scripts
 
 go 1.26.5
 
+toolchain go1.26.10
+
 require (
 	github.com/google/go-github/v90 v90.0.0
 	go.uber.org/zap v1.28.0

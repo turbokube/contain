@@ -22,6 +22,9 @@ jobs:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         goos: ${{ matrix.goos }}
         goarch: ${{ matrix.goarch }}
+        # go.mod's toolchain line. Unset, the action installs the latest Go, which a lower
+        # toolchain line does not hold back, and Go 1.27's gzip would move every layer digest
+        goversion: "1.26.10"
         project_path: "./cmd/contain"
         binary_name: contain
         asset_name: "contain-${{ github.event.release.tag_name }}-${{ matrix.goos }}-${{ matrix.goarch }}"

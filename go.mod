@@ -2,6 +2,8 @@ module github.com/turbokube/contain
 
 go 1.26.5
 
+toolchain go1.26.10
+
 require (
 	// Held at v2.13.2. Newer skaffold requires github.com/imdario/mergo v1.0.2,
 	// whose go.mod declares the path dario.cat/mergo, and relies on its own
