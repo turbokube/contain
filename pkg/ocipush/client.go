@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -325,7 +326,46 @@ func (c *regClient) postJSON(ctx context.Context, repo string, path string, body
 	return c.do(repo, transport.PushScope, req)
 }
 
+// manifestPutAttempts bounds PUTs of one manifest. A manifest is small and
+// its PUT idempotent, so unlike a blob a retry costs nothing but the wait.
+const manifestPutAttempts = 4
+
+// manifestRetryBackoff is the wait before the second manifest attempt,
+// tripling after: 2s, 6s, 18s. A registry answering 5xx is often waiting on
+// its storage backend, and an immediate resend tends to meet the same fault.
+var manifestRetryBackoff = 2 * time.Second
+
+// putManifest is retried on transport errors, 5xx and 429. distribution
+// answers a manifest PUT with 500 and [UNKNOWN, MANIFEST_BLOB_UNKNOWN] when
+// its storage fails the stat of a blob that is there; a blob that is really
+// missing gets 400, which is not retried.
 func (c *regClient) putManifest(ctx context.Context, repo string, raw []byte, mediaType string, refOrDigest string) error {
+	wait := manifestRetryBackoff
+	for attempt := 1; ; attempt++ {
+		err := c.putManifestOnce(ctx, repo, raw, mediaType, refOrDigest)
+		if err == nil {
+			return nil
+		}
+		if ctx.Err() != nil || !errors.Is(err, errRetryable) {
+			return err
+		}
+		if attempt >= manifestPutAttempts {
+			return fmt.Errorf("%w, after %d attempts", err, attempt)
+		}
+		zap.L().Info("retrying manifest put", zap.String("ref", refOrDigest),
+			zap.Int("attempt", attempt+1), zap.Duration("wait", wait), zap.Error(err))
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return err
+		case <-timer.C:
+		}
+		wait *= 3
+	}
+}
+
+func (c *regClient) putManifestOnce(ctx context.Context, repo string, raw []byte, mediaType string, refOrDigest string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
 		fmt.Sprintf("%s/v2/%s/manifests/%s", c.base, repo, refOrDigest), bytes.NewReader(raw))
 	if err != nil {
@@ -334,7 +374,7 @@ func (c *regClient) putManifest(ctx context.Context, repo string, raw []byte, me
 	req.Header.Set("Content-Type", mediaType)
 	res, err := c.do(repo, transport.PushScope, req)
 	if err != nil {
-		return fmt.Errorf("manifest put %s: %w", refOrDigest, err)
+		return retryable{fmt.Errorf("manifest put %s: %w", refOrDigest, err)}
 	}
 	if res.StatusCode < 200 || res.StatusCode > 299 {
 		return statusError(fmt.Sprintf("manifest put %s", refOrDigest), res)

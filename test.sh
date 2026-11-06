@@ -141,13 +141,16 @@ done
 # --- Layer cache tests (after OCI tests which populate the cache) ---
 echo "=> Testing layer cache..."
 
-# Cache info subcommand
-contain cache info 2>/dev/null | grep -q 'Path:' || { echo "Error: cache info missing Path"; exit 1; }
-contain cache info 2>/dev/null | grep -q 'Size:' || { echo "Error: cache info missing Size"; exit 1; }
+# Cache info subcommand. Captured once rather than piped to grep -q: grep
+# exits at the first match, and with pipefail the SIGPIPE that contain then
+# gets on its next line fails the check (seen ~4% of runs under load).
+CACHE_INFO=$(contain cache info 2>/dev/null)
+grep -q 'Path:' <<<"$CACHE_INFO" || { echo "Error: cache info missing Path"; exit 1; }
+grep -q 'Size:' <<<"$CACHE_INFO" || { echo "Error: cache info missing Size"; exit 1; }
 echo "ok: cache info format"
 
 # OCI output builds should have populated the cache
-CACHE_COUNT=$(contain cache info 2>/dev/null | grep 'Entries:' | awk '{print $2}')
+CACHE_COUNT=$(grep 'Entries:' <<<"$CACHE_INFO" | awk '{print $2}')
 [ "$CACHE_COUNT" -gt 0 ] || { echo "Error: cache should have entries after OCI tests, got $CACHE_COUNT"; exit 1; }
 echo "ok: cache has $CACHE_COUNT entries"
 
